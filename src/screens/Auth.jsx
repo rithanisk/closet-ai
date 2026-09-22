@@ -6,16 +6,28 @@ import { styleOptions } from '../data';
 export function Auth({ onComplete }) {
   const [mode, setMode] = useState('signin');
   const [step, setStep] = useState('auth');
-  const [name, setName] = useState('Jordan Lee');
-  const [email, setEmail] = useState('jordan@school.edu');
-  const [password, setPassword] = useState('closetai');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [styles, setStyles] = useState(['Minimal', 'Feminine', 'Classic']);
   const [city, setCity] = useState('Singapore');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
     if (mode === 'signup') setStep('onboarding');
-    else onComplete({ name: name || 'Jordan Lee', email, styles, city, isNew: false });
+    else {
+      setBusy(true); setError('');
+      try { await onComplete({ mode: 'login', email, password }); }
+      catch (nextError) { setError(nextError.message); setBusy(false); }
+    }
+  };
+
+  const finishSignup = async () => {
+    setBusy(true); setError('');
+    try { await onComplete({ mode: 'signup', name, email, password, styles, city }); }
+    catch (nextError) { setError(nextError.message); setBusy(false); }
   };
 
   if (step === 'onboarding') {
@@ -41,8 +53,9 @@ export function Auth({ onComplete }) {
             <Field label="Your default city">
               <input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Singapore" />
             </Field>
-            <button className="button button-dark" onClick={() => onComplete({ name, email, styles, city, isNew: true })}>Build my wardrobe →</button>
+            <button className="button button-dark" disabled={busy || !city.trim()} onClick={finishSignup}>{busy ? 'Creating your closet…' : 'Build my wardrobe →'}</button>
           </div>
+          {error && <p className="form-error" role="alert">{error}</p>}
         </section>
       </main>
     );
@@ -63,8 +76,8 @@ export function Auth({ onComplete }) {
       <section className="auth-panel">
         <form className="auth-form" onSubmit={submit}>
           <div className="auth-tabs" role="tablist">
-            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>Sign in</button>
-            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Create account</button>
+            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); setError(''); }}>Sign in</button>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); }}>Create account</button>
           </div>
           <div>
             <div className="eyebrow">{mode === 'signin' ? 'Welcome back' : 'Start your closet'}</div>
@@ -72,9 +85,9 @@ export function Auth({ onComplete }) {
           </div>
           {mode === 'signup' && <Field label="Full name"><input value={name} onChange={(event) => setName(event.target.value)} required /></Field>}
           <Field label="Email"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></Field>
-          <Field label="Password"><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} required /></Field>
-          {mode === 'signin' && <button type="button" className="text-link auth-forgot">Forgot password?</button>}
-          <button className="button button-dark button-full" type="submit">{mode === 'signin' ? 'Sign in' : 'Create account'}</button>
+          <Field label="Password" hint={mode === 'signup' ? 'Use at least 8 characters.' : undefined}><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={mode === 'signup' ? 8 : 1} required autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} /></Field>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="button button-dark button-full" type="submit" disabled={busy}>{busy ? 'Signing in…' : mode === 'signin' ? 'Sign in' : 'Continue'}</button>
           <p className="form-privacy">By continuing, you agree that original photos are processed once and then permanently deleted.</p>
         </form>
       </section>

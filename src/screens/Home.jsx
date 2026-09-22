@@ -36,9 +36,9 @@ export function HomeScreen({ profile, wardrobe, saved, onNavigate, onStartStylis
             <article className="weather-card">
               <CloudSun size={31} strokeWidth={1.4} />
               <div className="eyebrow">Location & weather</div>
-              <h2>{profile.city || 'Singapore'}</h2>
-              <p>29°C · Partly cloudy · Humid</p>
-              <span>Light layers recommended</span>
+              <h2>{profile.city || 'Set your city'}</h2>
+              <p>Live forecast checked when you ask the stylist</p>
+              <span>{profile.preciseLocation ? 'Precise location enabled' : 'Using your default city'}</span>
             </article>
           </section>
 

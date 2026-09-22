@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ConfirmModal, Sidebar, Toast } from './components';
+import { ConfirmModal, LoadingLine, Sidebar, Toast } from './components';
 import { Auth } from './screens/Auth';
 import { HomeScreen } from './screens/Home';
 import { ReviewScreen } from './screens/Review';
@@ -10,151 +10,196 @@ import { SettingsScreen } from './screens/Settings';
 import { StylistScreen } from './screens/Stylist';
 import { UploadScreen } from './screens/Upload';
 import { WardrobeScreen } from './screens/Wardrobe';
-import { COLORS, detectionSeed, seedWardrobe } from './data';
-import { useLocalStorage } from './hooks';
-
-const defaultProfile = {
-  name: 'Jordan Lee',
-  email: 'jordan@school.edu',
-  city: 'Singapore',
-  styles: ['Minimal', 'Feminine', 'Classic', 'Preppy'],
-  preciseLocation: true,
-};
+import { api } from './api';
+import { COLORS } from './data';
 
 export default function App() {
-  const [signedIn, setSignedIn] = useLocalStorage('closet-ai:signed-in', false);
-  const [profile, setProfile] = useLocalStorage('closet-ai:profile', defaultProfile);
-  const [wardrobe, setWardrobe] = useLocalStorage('closet-ai:wardrobe', seedWardrobe);
-  const [savedOutfits, setSavedOutfits] = useLocalStorage('closet-ai:saved', []);
+  const [sessionState, setSessionState] = useState('loading');
+  const [profile, setProfile] = useState(null);
+  const [wardrobe, setWardrobe] = useState([]);
+  const [savedOutfits, setSavedOutfits] = useState([]);
   const [screen, setScreen] = useState('home');
   const [uploadFiles, setUploadFiles] = useState([]);
   const [detections, setDetections] = useState([]);
+  const [discardedImageIds, setDiscardedImageIds] = useState([]);
   const [toast, setToast] = useState('');
   const [confirm, setConfirm] = useState(null);
   const [stylistPrompt, setStylistPrompt] = useState('');
 
   useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const session = await api('/api/auth/session');
+        const [wardrobeData, outfitData] = await Promise.all([api('/api/wardrobe'), api('/api/outfits')]);
+        if (!active) return;
+        setProfile(session.user);
+        setWardrobe(wardrobeData.items);
+        setSavedOutfits(outfitData.outfits);
+        setSessionState('signed-in');
+      } catch {
+        if (active) setSessionState('signed-out');
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     if (!toast) return undefined;
-    const timeout = window.setTimeout(() => setToast(''), 2600);
+    const timeout = window.setTimeout(() => setToast(''), 3600);
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const navigate = (target) => setScreen(target);
-  const completeAuth = (nextProfile) => {
-    const { isNew, ...profileFields } = nextProfile;
-    setProfile((current) => ({ ...current, ...profileFields, preciseLocation: current.preciseLocation ?? true }));
-    if (isNew) {
-      setWardrobe([]);
-      setSavedOutfits([]);
-    }
-    setSignedIn(true);
+  const completeAuth = async (credentials) => {
+    const endpoint = credentials.mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+    const data = await api(endpoint, { method: 'POST', body: JSON.stringify(credentials) });
+    setProfile(data.user);
+    const [wardrobeData, outfitData] = await Promise.all([api('/api/wardrobe'), api('/api/outfits')]);
+    setWardrobe(wardrobeData.items);
+    setSavedOutfits(outfitData.outfits);
+    setSessionState('signed-in');
     setScreen('home');
   };
 
-  const readPreview = (file) => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
+  const updateUploadFile = (id, changes) => setUploadFiles((current) => current.map((file) => file.id === id ? { ...file, ...changes } : file));
 
-  const addFiles = async (files) => {
-    const valid = files.filter((file) => file.type.startsWith('image/') && file.size <= 20 * 1024 * 1024);
-    const prepared = await Promise.all(valid.map(async (file, index) => ({
-      id: crypto.randomUUID(), name: file.name, status: 'waiting', progress: 0,
-      preview: await readPreview(file), accent: Object.values(COLORS)[index % Object.values(COLORS).length],
-    })));
-    setUploadFiles((current) => [...current, ...prepared]);
-    prepared.forEach((file, index) => runUploadPipeline(file.id, index * 180));
+  const processUpload = async (upload) => {
+    updateUploadFile(upload.id, { status: 'uploading', progress: 24, error: '' });
+    const formData = new FormData();
+    formData.append('file', upload.file);
+    try {
+      updateUploadFile(upload.id, { status: 'detecting', progress: 52 });
+      const data = await api('/api/upload/extract', { method: 'POST', body: formData });
+      updateUploadFile(upload.id, { status: 'preparing', progress: 88 });
+      window.setTimeout(() => updateUploadFile(upload.id, { status: 'ready', progress: 100, detections: data.items }), 220);
+    } catch (error) {
+      updateUploadFile(upload.id, { status: error.status === 422 ? 'empty' : 'failed', progress: 100, error: error.message });
+      setToast(error.message);
+    }
   };
 
-  const runUploadPipeline = (id, delay = 0) => {
-    const setFile = (changes) => setUploadFiles((current) => current.map((file) => file.id === id ? { ...file, ...changes } : file));
-    window.setTimeout(() => setFile({ status: 'uploading', progress: 34 }), delay + 80);
-    window.setTimeout(() => setFile({ status: 'detecting', progress: 69 }), delay + 520);
-    window.setTimeout(() => setFile({ status: 'preparing', progress: 88 }), delay + 980);
-    window.setTimeout(() => setFile({ status: 'ready', progress: 100 }), delay + 1420);
+  const addFiles = (files) => {
+    const valid = files.filter((file) => ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) && file.size <= 20 * 1024 * 1024);
+    if (valid.length !== files.length) setToast('Some files were skipped. Use JPG, PNG, or WEBP images up to 20MB.');
+    const prepared = valid.map((file, index) => ({
+      id: crypto.randomUUID(), name: file.name, file, status: 'waiting', progress: 0,
+      preview: URL.createObjectURL(file), accent: Object.values(COLORS)[index % Object.values(COLORS).length], detections: [],
+    }));
+    setUploadFiles((current) => [...current, ...prepared]);
+    prepared.forEach(processUpload);
   };
 
   const openReview = () => {
-    const ready = uploadFiles.filter((file) => file.status === 'ready');
-    const uploadedDetections = ready.map((file, index) => ({
-      id: `upload-${file.id}`,
-      name: `Detected ${index % 2 ? 'Accessory' : 'Garment'}`,
-      category: index % 2 ? 'Accessories' : 'Tops',
-      color: 'Unconfirmed',
-      accent: file.accent,
-      image: file.preview,
-      confidence: index === ready.length - 1 && ready.length > 1 ? 'low' : 'high',
-      duplicate: false,
-      selected: true,
-    }));
-    setDetections(uploadedDetections.length ? uploadedDetections : detectionSeed.map((item) => ({ ...item })));
+    setDetections(uploadFiles.filter((file) => file.status === 'ready').flatMap((file) => file.detections || []));
     setScreen('review');
   };
 
-  const addConfirmedItems = () => {
-    const approved = detections.filter((item) => item.selected).map((item, index) => ({
-      ...item,
-      id: crypto.randomUUID(),
-      favorite: false,
-      available: true,
-      formality: 'Casual',
-      season: 'All seasons',
-      notes: '',
-      worn: 0,
-      addedAt: Date.now() + index,
-      confidence: undefined,
-      duplicate: undefined,
-      selected: undefined,
-    }));
-    setWardrobe((current) => [...approved, ...current]);
-    setDetections([]);
-    setUploadFiles([]);
-    setScreen('wardrobe');
-    setToast(`${approved.length} ${approved.length === 1 ? 'item' : 'items'} added to your wardrobe`);
+  const removeDetection = (id) => {
+    const removed = detections.find((item) => item.id === id);
+    if (removed?.imageId) setDiscardedImageIds((ids) => [...ids, removed.imageId]);
+    setDetections((current) => current.filter((item) => item.id !== id));
   };
 
-  const updateItem = (id, changes) => {
-    setWardrobe((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
-    setToast('Item updated');
+  const addConfirmedItems = async () => {
+    const approved = detections.filter((item) => item.selected);
+    try {
+      const data = await api('/api/wardrobe', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: approved.map(({ imageId, name, category, color, pattern, material, formality, season }) => ({ imageId, name, category, color, pattern, material, formality, season })),
+          discardedImageIds: [...discardedImageIds, ...detections.filter((item) => !item.selected).map((item) => item.imageId)],
+        }),
+      });
+      uploadFiles.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
+      setWardrobe(data.items); setDetections([]); setDiscardedImageIds([]); setUploadFiles([]); setScreen('wardrobe');
+      setToast(`${approved.length} ${approved.length === 1 ? 'item' : 'items'} added to your wardrobe`);
+    } catch (error) { setToast(error.message); }
   };
+
+  const updateItem = async (id, changes) => {
+    try {
+      const data = await api(`/api/wardrobe/${id}`, { method: 'PATCH', body: JSON.stringify(changes) });
+      setWardrobe(data.items); setToast('Item updated');
+    } catch (error) { setToast(error.message); }
+  };
+
+  const deleteItem = async (id, after) => {
+    try {
+      const data = await api(`/api/wardrobe/${id}`, { method: 'DELETE' });
+      setWardrobe(data.items); after?.(); setToast('Item deleted');
+    } catch (error) { setToast(error.message); }
+  };
+
   const requestDeleteItem = (id, after) => setConfirm({
     title: 'Delete this item?',
-    body: 'The cutout and all its metadata will be permanently removed from your wardrobe.',
+    body: 'The extracted image and all its metadata will be permanently removed from your wardrobe.',
     actionLabel: 'Delete item',
-    onConfirm: () => { setWardrobe((current) => current.filter((item) => item.id !== id)); setConfirm(null); after?.(); setToast('Item deleted'); },
+    onConfirm: async () => { setConfirm(null); await deleteItem(id, after); },
   });
-  const archiveItem = (id) => { setWardrobe((current) => current.filter((item) => item.id !== id)); setToast('Item archived'); };
+
   const useInOutfit = (item) => { setStylistPrompt(`Build an outfit around my ${item.name}.`); setScreen('stylist'); };
   const startStylist = (prompt) => { setStylistPrompt(prompt); setScreen('stylist'); };
-  const saveOutfit = (outfit) => {
+
+  const saveOutfit = async (outfit) => {
     if (savedOutfits.some((saved) => saved.id === outfit.id)) return;
-    setSavedOutfits((current) => [{ ...outfit, savedId: crypto.randomUUID(), savedAt: new Date().toISOString(), worn: false }, ...current]);
-    setToast('Saved to your outfit library');
+    try {
+      const data = await api('/api/outfits', { method: 'POST', body: JSON.stringify(outfit) });
+      setSavedOutfits(data.outfits); setToast('Saved to your outfit library');
+    } catch (error) { setToast(error.message); }
   };
+
+  const updateSaved = async (id, worn) => {
+    try {
+      const data = await api(`/api/outfits/${id}`, { method: 'PATCH', body: JSON.stringify({ worn }) });
+      setSavedOutfits(data.outfits); setToast('Outfit marked as worn');
+    } catch (error) { setToast(error.message); }
+  };
+
+  const removeSaved = async (id) => {
+    try {
+      const data = await api(`/api/outfits/${id}`, { method: 'DELETE' });
+      setSavedOutfits(data.outfits); setToast('Saved outfit removed');
+    } catch (error) { setToast(error.message); }
+  };
+
+  const saveProfile = async (changes) => {
+    try {
+      const data = await api('/api/profile', { method: 'PATCH', body: JSON.stringify(changes) });
+      setProfile(data.user); setToast('Settings saved');
+    } catch (error) { setToast(error.message); throw error; }
+  };
+
+  const signOut = async () => {
+    await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    setProfile(null); setWardrobe([]); setSavedOutfits([]); setSessionState('signed-out'); setScreen('home');
+  };
+
   const deleteAccount = () => setConfirm({
     title: 'Delete your account?',
-    body: 'Your wardrobe, saved outfits, and preferences will be permanently erased.',
+    body: 'Your private images, wardrobe, saved outfits, and preferences will be permanently erased.',
     actionLabel: 'Delete account',
-    onConfirm: () => {
-      setWardrobe([]); setSavedOutfits([]); setProfile(defaultProfile); setSignedIn(false); setConfirm(null); setScreen('home');
+    onConfirm: async () => {
+      try {
+        await api('/api/account', { method: 'DELETE' });
+        setConfirm(null); setProfile(null); setWardrobe([]); setSavedOutfits([]); setSessionState('signed-out'); setScreen('home');
+      } catch (error) { setConfirm(null); setToast(error.message); }
     },
   });
 
-  if (!signedIn) return <Auth onComplete={completeAuth} />;
+  if (sessionState === 'loading') return <main className="bootstrap-screen"><LoadingLine>Opening your private wardrobe…</LoadingLine></main>;
+  if (sessionState === 'signed-out') return <Auth onComplete={completeAuth} />;
 
   return (
     <div className="app-shell">
-      <Sidebar screen={screen} onNavigate={navigate} onUpload={() => setScreen('upload')} onSignOut={() => setSignedIn(false)} name={profile.name} />
+      <Sidebar screen={screen} onNavigate={setScreen} onUpload={() => setScreen('upload')} onSignOut={signOut} name={profile.name} />
       <main className="app-main">
-        {screen === 'home' && <HomeScreen profile={profile} wardrobe={wardrobe} saved={savedOutfits} onNavigate={navigate} onStartStylist={startStylist} />}
-        {screen === 'upload' && <UploadScreen files={uploadFiles} onAddFiles={addFiles} onCancel={(id) => setUploadFiles((current) => current.filter((file) => file.id !== id))} onRetry={(id) => runUploadPipeline(id, 0)} onReview={openReview} />}
-        {screen === 'review' && <ReviewScreen items={detections} onChange={(id, changes) => setDetections((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item))} onRemove={(id) => setDetections((current) => current.filter((item) => item.id !== id))} onConfirmAll={() => { setDetections((current) => current.map((item) => item.confidence === 'high' && !item.duplicate ? { ...item, selected: true } : item)); setToast('High-confidence items confirmed'); }} onAdd={addConfirmedItems} />}
-        {screen === 'wardrobe' && <WardrobeScreen wardrobe={wardrobe} onUpload={() => setScreen('upload')} onUpdate={updateItem} onDelete={requestDeleteItem} onArchive={archiveItem} onUseInOutfit={useInOutfit} />}
+        {screen === 'home' && <HomeScreen profile={profile} wardrobe={wardrobe} saved={savedOutfits} onNavigate={setScreen} onStartStylist={startStylist} />}
+        {screen === 'upload' && <UploadScreen files={uploadFiles} onAddFiles={addFiles} onCancel={(id) => setUploadFiles((current) => current.filter((file) => file.id !== id))} onRetry={(id) => { const file = uploadFiles.find((entry) => entry.id === id); if (file) processUpload(file); }} onReview={openReview} />}
+        {screen === 'review' && <ReviewScreen items={detections} onChange={(id, changes) => setDetections((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item))} onRemove={removeDetection} onConfirmAll={() => { setDetections((current) => current.map((item) => item.confidence === 'high' && !item.duplicate ? { ...item, selected: true } : item)); setToast('High-confidence items confirmed'); }} onAdd={addConfirmedItems} />}
+        {screen === 'wardrobe' && <WardrobeScreen wardrobe={wardrobe} onUpload={() => setScreen('upload')} onUpdate={updateItem} onDelete={requestDeleteItem} onArchive={(id) => deleteItem(id)} onUseInOutfit={useInOutfit} />}
         {screen === 'stylist' && <StylistScreen wardrobe={wardrobe} profile={profile} saved={savedOutfits} onSave={saveOutfit} onUpload={() => setScreen('upload')} initialPrompt={stylistPrompt} onConsumePrompt={() => setStylistPrompt('')} />}
-        {screen === 'saved' && <SavedScreen outfits={savedOutfits} onMarkWorn={(id) => { setSavedOutfits((current) => current.map((item) => item.savedId === id ? { ...item, worn: true } : item)); setToast('Outfit marked as worn'); }} onRemove={(id) => setSavedOutfits((current) => current.filter((item) => item.savedId !== id))} onStylist={() => setScreen('stylist')} />}
-        {screen === 'settings' && <SettingsScreen profile={profile} onSave={(changes) => { setProfile(changes); setToast('Settings saved'); }} onDeleteAccount={deleteAccount} />}
+        {screen === 'saved' && <SavedScreen outfits={savedOutfits} onMarkWorn={(id) => updateSaved(id, true)} onRemove={removeSaved} onStylist={() => setScreen('stylist')} />}
+        {screen === 'settings' && <SettingsScreen profile={profile} onSave={saveProfile} onDeleteAccount={deleteAccount} />}
       </main>
       <ConfirmModal config={confirm} onClose={() => setConfirm(null)} />
       <Toast message={toast} />

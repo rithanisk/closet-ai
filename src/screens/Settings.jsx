@@ -7,7 +7,11 @@ export function SettingsScreen({ profile, onSave, onDeleteAccount }) {
   const [form, setForm] = useState({ ...profile });
   const [saved, setSaved] = useState(false);
   const toggleStyle = (style) => setForm((current) => ({ ...current, styles: current.styles.includes(style) ? current.styles.filter((item) => item !== style) : [...current.styles, style] }));
-  const submit = (event) => { event.preventDefault(); onSave(form); setSaved(true); window.setTimeout(() => setSaved(false), 1800); };
+  const submit = async (event) => {
+    event.preventDefault();
+    try { await onSave(form); setSaved(true); window.setTimeout(() => setSaved(false), 1800); }
+    catch { /* The app-level toast already explains validation or network errors. */ }
+  };
   return (
     <div className="page settings-page">
       <PageHeader eyebrow="Make it personal" title="Settings" description="Update what your stylist knows about you." />

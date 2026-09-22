@@ -367,6 +367,19 @@ h1, h2, h3 { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 600; }
 .toast span { width: 7px; height: 7px; border-radius: 50%; background: #8ea36d; }
 @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } }
 
+.bootstrap-screen { display: grid; min-height: 100vh; place-items: center; color: var(--muted); background: var(--paper); font-size: 13px; }
+.form-error { margin: 0; padding: 9px 11px; border: 1px solid #dcb4a6; color: var(--danger); background: #fff6f3; font-size: 11px; line-height: 1.5; }
+.tryon-modal h2 { margin: 7px 0 8px; font-size: 34px; }
+.tryon-modal > p { max-width: 570px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.tryon-upload { display: grid; min-height: 340px; margin: 20px 0 14px; place-items: center; overflow: hidden; border: 1.5px dashed #c9c3b7; background: #fff; cursor: pointer; }
+.tryon-upload > span { display: flex; align-items: center; flex-direction: column; gap: 8px; color: var(--muted); font-size: 12px; }
+.tryon-upload strong { color: var(--ink); font-family: 'Bodoni Moda', Georgia, serif; font-size: 20px; }
+.tryon-upload small { color: var(--faint); font-size: 10px; }
+.tryon-upload img { display: block; width: 100%; max-height: 480px; object-fit: contain; }
+.consent-row { display: flex; align-items: flex-start; gap: 9px; margin: 12px 0 15px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.consent-row input { margin-top: 1px; accent-color: var(--ink); }
+.tryon-result { display: block; width: 100%; max-height: 620px; margin: 20px 0 14px; object-fit: contain; background: #eee9e0; }
+
 @media (max-width: 1180px) {
   .page { padding-right: 32px; padding-left: 32px; }
   .outfit-grid { grid-template-columns: 1fr; }

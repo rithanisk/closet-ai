@@ -36,7 +36,7 @@ export function UploadScreen({ files, onAddFiles, onCancel, onRetry, onReview })
             <article className="upload-row" key={file.id}>
               <div className="upload-thumb" style={{ backgroundImage: file.preview ? `url(${file.preview})` : undefined }} />
               <div className="upload-meta">
-                <div className="upload-title"><strong>{file.name}</strong><span className={`status status-${file.status}`}>{labels[file.status]}</span></div>
+                <div className="upload-title"><strong>{file.name}</strong><span className={`status status-${file.status}`} title={file.error || ''}>{file.error || labels[file.status]}</span></div>
                 <div className="progress-track"><span style={{ width: `${file.progress}%` }} /></div>
               </div>
               {file.status === 'failed' ? <button className="icon-text-button" onClick={() => onRetry(file.id)}><RotateCcw size={14} /> Retry</button> : file.status === 'ready' ? <CheckCircle2 className="ready-icon" size={21} /> : <button className="icon-button" onClick={() => onCancel(file.id)} aria-label={`Cancel ${file.name}`}><X size={18} /></button>}
@@ -45,7 +45,7 @@ export function UploadScreen({ files, onAddFiles, onCancel, onRetry, onReview })
         </div>
       )}
       <div className="upload-footer">
-        <div className="upload-helper"><ShieldCheck size={16} /><span>Your photos stay in this browser for the demo and are discarded after review.</span></div>
+        <div className="upload-helper"><ShieldCheck size={16} /><span>Original photos are processed securely and not retained. Only approved item crops stay in your private wardrobe.</span></div>
         <div className="upload-actions">
           {files.length > 0 && <button className="button button-outline" onClick={() => inputRef.current?.click()}>+ Add more photos</button>}
           <button className="button button-dark" disabled={!ready} onClick={onReview}>{ready ? 'Continue to review →' : <LoadingLine>Waiting for an item</LoadingLine>}</button>
