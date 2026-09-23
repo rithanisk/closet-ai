@@ -1,80 +1,89 @@
 # Closet AI — Production MVP
 
-A desktop-first AI wardrobe and personal styling app built from the supplied design handoff. A user can upload any closet photo, review every detected garment/accessory, manage a private wardrobe, receive three complete weather-aware outfits made only from owned pieces, save approved looks, and generate a full-body virtual try-on.
+A desktop-first AI wardrobe and personal styling app. Users can upload closet photos, review detected garments, manage a private wardrobe, receive three complete weather-aware outfits made only from owned pieces, save approved looks, and generate virtual try-ons.
 
-## One required secret
+## Required environment variables
 
-Create `.env.local` in this folder:
+Copy the template and fill in `.env.local`:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Then add your key without quotes:
-
 ```dotenv
-OPENAI_API_KEY=your_key_here
+OPENAI_API_KEY=
+OPENAI_VISION_MODEL=gpt-5.6-terra
+OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
+OPENAI_ENABLE_WEB_SEARCH=true
+
+DATABASE_URL=
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+SUPABASE_STORAGE_BUCKET=closet-images
 ```
 
-Never paste the key into the UI or commit `.env.local`. It is read only by server routes.
+`DATABASE_URL` is used only by the optional command-line migration script. The running application uses Supabase's HTTPS Data API, so local auth and normal app traffic do not depend on an open Postgres port. For migrations, use Supabase Dashboard → **Connect → Session pooler**, or run the SQL file directly in Supabase SQL Editor.
+
+`SUPABASE_SECRET_KEY` must be the server-only `sb_secret_…` key. Never use a `NEXT_PUBLIC_` prefix for it and never commit `.env.local`.
+
+## Initialize Supabase
+
+Run the idempotent migration once for each Supabase project:
+
+```bash
+npm run db:migrate
+```
+
+It creates the application tables, indexes, foreign keys, rate-limit store, and a private Storage bucket. Application tables have RLS enabled and browser-facing `anon`/`authenticated` access revoked because all authorization is enforced in server routes.
 
 ## Run locally
 
-Use Node 24 (the repo includes `.nvmrc`):
+Use Node 24:
 
 ```bash
 nvm use
 npm install
+npm run db:migrate
 npm run dev
 ```
 
-Open `http://127.0.0.1:4173` and create an account. The only required external credential is `OPENAI_API_KEY`; weather uses Open-Meteo without an API key.
+Open `http://127.0.0.1:4173`.
 
-## What is implemented
+## Architecture
 
-- Real account creation and sign-in with scrypt password hashing
-- Opaque, expiring sessions in Secure/HttpOnly/SameSite cookies
-- SQLite persistence for accounts, sessions, wardrobe metadata, saved outfits, feedback, and rate limits
-- Private per-user image storage served only through authenticated routes
-- JPG/PNG/WEBP validation, pixel limits, EXIF stripping, normalization, and 20MB upload limits
-- OpenAI vision extraction of every visible garment and accessory, including category, color, material, pattern, formality, season, confidence, and bounding box
-- Multiple detected items from one photo, cropped into separate wardrobe images
-- Review, correction, duplicate warning, filtering, editing, availability, favorites, and deletion
-- Exactly three ranked, complete outfit recommendations using owned, available item IDs only
-- Personal-style, live-weather, city/optional browser location, occasion, constraint, saved-look, and wear-history context
-- Refinement, item replacement, closest-owned-alternative notes, and optional shopping suggestions
-- Saved outfit library and wear tracking
-- OpenAI image-edit virtual try-on using a temporary full-body photo and the actual selected wardrobe pieces
-- Same-origin mutation checks, owner-scoped queries, input schemas, rate limits, private cache headers, and cascade deletion
-- Account deletion removes database records and all locally stored user images
+- Next.js 16 App Router and React 19
+- Supabase Postgres for users, password hashes, sessions, wardrobe metadata, saved outfits, feedback, and rate limits
+- Private Supabase Storage bucket for extracted wardrobe crops and generated try-ons
+- Server-side Supabase HTTPS Data API; credentials never reach browser JavaScript
+- Authenticated `/api/assets/:id` proxy verifies ownership before downloading a private object
+- OpenAI Responses API for multi-garment vision extraction and structured outfit generation
+- OpenAI image editing for virtual try-on
+- Open-Meteo for weather without another credential
 
-Original upload photos are decoded and normalized in memory; they are not written to Closet AI storage. Only extracted item crops that the user approves are kept. A virtual try-on source photo is also not stored by Closet AI; the generated result is stored privately so it can be displayed.
+The app retains its existing custom account system: passwords are scrypt-hashed and opaque sessions are stored in Secure/HttpOnly/SameSite cookies. Supabase is used as the production database and private object store, not as a second overlapping browser-auth system.
 
-## Configuration
+## Privacy and security behavior
 
-Defaults are already present in `.env.example`:
-
-```dotenv
-OPENAI_VISION_MODEL=gpt-5.6-terra
-OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
-OPENAI_ENABLE_WEB_SEARCH=true
-CLOSET_DATA_DIR=./data
-```
-
-Model names are configurable so you can change cost/quality without changing code. Your OpenAI API project must have billing and access enabled for the chosen text/vision and image models.
+- Original upload photos are normalized in memory and never written to application or Supabase storage.
+- Only extracted item crops approved by the user are retained.
+- Virtual try-on source photos are not retained; only the generated result is stored privately.
+- Every database query and image fetch is scoped to the authenticated user ID.
+- Mutations use same-origin checks and Zod validation.
+- Account deletion removes private Storage objects before cascading database deletion.
+- API rate limits persist in Postgres across app restarts.
 
 ## Production deployment
 
-This version intentionally needs no database or storage credentials: it runs as a single Node service with SQLite and private on-disk files. Deploy the included Docker image to a host with a persistent volume mounted at `/app/data` (for example Railway, Render, Fly.io, or a VPS), and set `OPENAI_API_KEY` as a secret in that host. Put the service behind HTTPS.
+Set the same environment variables in your hosting provider, run the migration during deployment, and put the app behind HTTPS. Because data and images now live in Supabase, the app no longer needs a persistent local filesystem and can run on a container or serverless Node host. Ensure the host’s function duration supports OpenAI vision and image generation requests.
+
+The included Docker image no longer mounts a data volume:
 
 ```bash
 docker build -t closet-ai .
-docker run --env-file .env.local -p 4173:4173 -v closet-ai-data:/app/data closet-ai
+docker run --env-file .env.local -p 4173:4173 closet-ai
 ```
 
 Health check: `GET /api/health`.
-
-Do not deploy this disk-backed version to an ephemeral serverless filesystem. For multiple application replicas, migrate the database adapter to managed Postgres and the storage adapter to private S3-compatible object storage; the UI and OpenAI workflows can remain unchanged.
 
 ## Verification
 
@@ -82,4 +91,4 @@ Do not deploy this disk-backed version to an ephemeral serverless filesystem. Fo
 npm run build
 ```
 
-The production build includes all application and API routes. AI calls require a valid key, but authentication, sessions, persistence, and owner isolation can be exercised without one.
+The production build does not expose Supabase or OpenAI secrets to the client bundle.

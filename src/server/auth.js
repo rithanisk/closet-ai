@@ -3,7 +3,7 @@ import 'server-only';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { cookies } from 'next/headers';
-import { db, userView } from './db';
+import { assertDatabase, db, userView } from './db';
 import { HttpError } from './http';
 
 const scrypt = promisify(crypto.scrypt);
@@ -31,8 +31,8 @@ export async function verifyPassword(password, stored) {
 export async function createSession(userId) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
-  db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
-    .run(tokenHash(token), userId, now + SESSION_MS, now);
+  const { error } = await db().from('sessions').insert({ token_hash: tokenHash(token), user_id: userId, expires_at: now + SESSION_MS, created_at: now });
+  assertDatabase(error, 'Could not create session');
   const store = await cookies();
   store.set(COOKIE_NAME, token, {
     httpOnly: true,
@@ -46,7 +46,10 @@ export async function createSession(userId) {
 export async function clearSession() {
   const store = await cookies();
   const token = store.get(COOKIE_NAME)?.value;
-  if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+  if (token) {
+    const { error } = await db().from('sessions').delete().eq('token_hash', tokenHash(token));
+    assertDatabase(error, 'Could not clear session');
+  }
   store.delete(COOKIE_NAME);
 }
 
@@ -54,14 +57,16 @@ export async function currentUser() {
   const store = await cookies();
   const token = store.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  const row = db.prepare(`
-    SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ? AND s.expires_at > ?
-  `).get(tokenHash(token), Date.now());
-  if (!row) {
-    db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+  const hash = tokenHash(token);
+  const { data: session, error: sessionError } = await db().from('sessions').select('user_id, expires_at').eq('token_hash', hash).gt('expires_at', Date.now()).maybeSingle();
+  assertDatabase(sessionError, 'Could not read session');
+  if (!session) {
+    const { error } = await db().from('sessions').delete().eq('token_hash', hash);
+    assertDatabase(error, 'Could not remove expired session');
     return null;
   }
+  const { data: row, error: userError } = await db().from('users').select('*').eq('id', session.user_id).maybeSingle();
+  assertDatabase(userError, 'Could not read account');
   return userView(row);
 }
 

@@ -20,7 +20,7 @@ const schema = z.object({
 export async function GET() {
   try {
     const user = await requireUser();
-    return NextResponse.json({ outfits: listOutfits(user.id) });
+    return NextResponse.json({ outfits: await listOutfits(user.id) });
   } catch (error) { return apiError(error); }
 }
 
@@ -29,7 +29,7 @@ export async function POST(request) {
     assertSameOrigin(request);
     const user = await requireUser();
     const input = await jsonBody(request, schema);
-    const outfit = saveOutfit(user.id, input);
-    return NextResponse.json({ outfit, outfits: listOutfits(user.id) }, { status: 201 });
+    const outfit = await saveOutfit(user.id, input);
+    return NextResponse.json({ outfit, outfits: await listOutfits(user.id) }, { status: 201 });
   } catch (error) { return apiError(error); }
 }

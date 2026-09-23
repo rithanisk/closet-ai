@@ -2,6 +2,7 @@ import 'server-only';
 
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
+import { assertDatabase, db } from './db';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -43,10 +44,14 @@ export function apiError(error) {
   );
 }
 
-export function enforceRateLimit(userId, action, limit, windowMs, db) {
+export async function enforceRateLimit(userId, action, limit, windowMs) {
   const since = Date.now() - windowMs;
-  db.prepare('DELETE FROM rate_events WHERE created_at < ?').run(Date.now() - 24 * 60 * 60 * 1000);
-  const row = db.prepare('SELECT COUNT(*) AS count FROM rate_events WHERE user_id = ? AND action = ? AND created_at >= ?').get(userId, action, since);
-  if (row.count >= limit) throw new HttpError(429, 'You have reached the temporary usage limit. Please wait a little and try again.');
-  db.prepare('INSERT INTO rate_events (user_id, action, created_at) VALUES (?, ?, ?)').run(userId, action, Date.now());
+  const database = db();
+  const { error: cleanupError } = await database.from('rate_events').delete().lt('created_at', Date.now() - 24 * 60 * 60 * 1000);
+  assertDatabase(cleanupError, 'Could not maintain rate limits');
+  const { count, error: countError } = await database.from('rate_events').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('action', action).gte('created_at', since);
+  assertDatabase(countError, 'Could not check rate limit');
+  if ((count || 0) >= limit) throw new HttpError(429, 'You have reached the temporary usage limit. Please wait a little and try again.');
+  const { error: insertError } = await database.from('rate_events').insert({ user_id: userId, action, created_at: Date.now() });
+  assertDatabase(insertError, 'Could not update rate limit');
 }

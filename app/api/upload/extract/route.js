@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/src/server/auth';
-import { db } from '@/src/server/db';
+import { assertDatabase, db } from '@/src/server/db';
 import { apiError, assertSameOrigin, enforceRateLimit, HttpError } from '@/src/server/http';
 import { extractGarments } from '@/src/server/openai';
 import { cropAndSave, deleteImage, normalizeUpload } from '@/src/server/storage';
@@ -13,13 +13,14 @@ export async function POST(request) {
   try {
     assertSameOrigin(request);
     const user = await requireUser();
-    enforceRateLimit(user.id, 'extract', 40, 60 * 60 * 1000, db);
+    await enforceRateLimit(user.id, 'extract', 40, 60 * 60 * 1000);
     const formData = await request.formData();
     const file = formData.get('file');
     const normalized = await normalizeUpload(file);
     const extracted = await extractGarments(normalized);
     if (!extracted.length) throw new HttpError(422, 'No clear garments or accessories were found in this photo.');
-    const existing = db.prepare('SELECT name, category, color FROM wardrobe_items WHERE user_id = ?').all(user.id);
+    const { data: existing, error: existingError } = await db().from('wardrobe_items').select('name, category, color').eq('user_id', user.id);
+    assertDatabase(existingError, 'Could not check wardrobe duplicates');
     const items = [];
     try {
       for (const item of extracted) {

@@ -1,13 +1,11 @@
 import 'server-only';
 
 import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import sharp from 'sharp';
-import { dataDir, db } from './db';
+import { assertDatabase, db } from './db';
 import { HttpError } from './http';
+import { storageBucket, supabaseAdmin } from './supabase';
 
-const filesRoot = path.join(dataDir, 'files');
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export async function normalizeUpload(file) {
@@ -29,12 +27,23 @@ export async function normalizeUpload(file) {
 export async function saveImage(userId, buffer, kind, mimeType = 'image/webp') {
   const id = crypto.randomUUID();
   const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/jpeg' ? 'jpg' : 'webp';
-  const userDir = path.join(filesRoot, userId);
-  await fs.mkdir(userDir, { recursive: true, mode: 0o700 });
-  const filePath = path.join(userDir, `${id}.${extension}`);
-  await fs.writeFile(filePath, buffer, { mode: 0o600 });
-  db.prepare('INSERT INTO images (id, user_id, kind, mime_type, file_path, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, userId, kind, mimeType, filePath, Date.now());
+  const objectPath = `${userId}/${kind}/${id}.${extension}`;
+  const supabase = supabaseAdmin();
+  const bucket = storageBucket();
+  const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, buffer, {
+    contentType: mimeType,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (uploadError) throw new Error(`Supabase Storage upload failed: ${uploadError.message}`);
+
+  try {
+    const { error } = await db().from('images').insert({ id, user_id: userId, kind, mime_type: mimeType, object_path: objectPath, created_at: Date.now() });
+    assertDatabase(error, 'Could not save image metadata');
+  } catch (error) {
+    await supabase.storage.from(bucket).remove([objectPath]);
+    throw error;
+  }
   return { id, image: `/api/assets/${id}` };
 }
 
@@ -48,27 +57,41 @@ export async function cropAndSave(userId, source, bbox) {
   const top = Math.max(0, Math.floor((y / 1000 - padding) * height));
   const right = Math.min(width, Math.ceil(((x + w) / 1000 + padding) * width));
   const bottom = Math.min(height, Math.ceil(((y + h) / 1000 + padding) * height));
-  const cropWidth = Math.max(1, right - left);
-  const cropHeight = Math.max(1, bottom - top);
   const output = await sharp(source)
-    .extract({ left, top, width: cropWidth, height: cropHeight })
+    .extract({ left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) })
     .resize({ width: 900, height: 900, fit: 'contain', background: '#f4f1eb', withoutEnlargement: true })
     .webp({ quality: 90 })
     .toBuffer();
   return saveImage(userId, output, 'pending-item', 'image/webp');
 }
 
-export function getOwnedImage(userId, imageId) {
-  return db.prepare('SELECT * FROM images WHERE id = ? AND user_id = ?').get(imageId, userId);
+export async function getOwnedImage(userId, imageId) {
+  const { data: image, error } = await db().from('images').select('*').eq('id', imageId).eq('user_id', userId).maybeSingle();
+  assertDatabase(error, 'Could not load image metadata');
+  return image || null;
+}
+
+export async function readStoredImage(objectPath) {
+  const { data, error } = await supabaseAdmin().storage.from(storageBucket()).download(objectPath);
+  if (error) throw new Error(`Supabase Storage download failed: ${error.message}`);
+  return Buffer.from(await data.arrayBuffer());
 }
 
 export async function deleteImage(userId, imageId) {
-  const image = getOwnedImage(userId, imageId);
+  const image = await getOwnedImage(userId, imageId);
   if (!image) return;
-  db.prepare('DELETE FROM images WHERE id = ? AND user_id = ?').run(imageId, userId);
-  await fs.unlink(image.file_path).catch(() => {});
+  const { error } = await supabaseAdmin().storage.from(storageBucket()).remove([image.object_path]);
+  if (error) throw new Error(`Supabase Storage deletion failed: ${error.message}`);
+  const { error: databaseError } = await db().from('images').delete().eq('id', imageId).eq('user_id', userId);
+  assertDatabase(databaseError, 'Could not delete image metadata');
 }
 
 export async function deleteUserFiles(userId) {
-  await fs.rm(path.join(filesRoot, userId), { recursive: true, force: true });
+  const { data: rows, error: rowsError } = await db().from('images').select('object_path').eq('user_id', userId);
+  assertDatabase(rowsError, 'Could not list account images');
+  const paths = rows.map((row) => row.object_path);
+  for (let index = 0; index < paths.length; index += 1000) {
+    const { error } = await supabaseAdmin().storage.from(storageBucket()).remove(paths.slice(index, index + 1000));
+    if (error) throw new Error(`Supabase Storage account cleanup failed: ${error.message}`);
+  }
 }

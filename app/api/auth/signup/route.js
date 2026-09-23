@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSession, hashPassword } from '@/src/server/auth';
-import { db, userView } from '@/src/server/db';
+import { assertDatabase, db, userView } from '@/src/server/db';
 import { apiError, assertSameOrigin, enforceRateLimit, HttpError, jsonBody } from '@/src/server/http';
 
 const schema = z.object({
@@ -17,15 +17,19 @@ export async function POST(request) {
   try {
     assertSameOrigin(request);
     const clientAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
-    enforceRateLimit(`signup:${clientAddress}`, 'signup', 10, 60 * 60 * 1000, db);
+    await enforceRateLimit(`signup:${clientAddress}`, 'signup', 10, 60 * 60 * 1000);
     const input = await jsonBody(request, schema);
-    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(input.email)) throw new HttpError(409, 'An account with that email already exists.');
+    const database = db();
+    const { data: existing, error: existingError } = await database.from('users').select('id').eq('email', input.email).maybeSingle();
+    assertDatabase(existingError, 'Could not check account');
+    if (existing) throw new HttpError(409, 'An account with that email already exists.');
     const id = crypto.randomUUID();
     const passwordHash = await hashPassword(input.password);
-    db.prepare(`INSERT INTO users (id, email, password_hash, name, city, styles_json, precise_location, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 0, ?)`)
-      .run(id, input.email, passwordHash, input.name, input.city, JSON.stringify(input.styles), Date.now());
+    const { error: insertError } = await database.from('users').insert({ id, email: input.email, password_hash: passwordHash, name: input.name, city: input.city, styles_json: input.styles, precise_location: false, created_at: Date.now() });
+    assertDatabase(insertError, 'Could not create account');
     await createSession(id);
-    return NextResponse.json({ user: userView(db.prepare('SELECT * FROM users WHERE id = ?').get(id)) }, { status: 201 });
+    const { data: user, error: userError } = await database.from('users').select('*').eq('id', id).single();
+    assertDatabase(userError, 'Could not load new account');
+    return NextResponse.json({ user: userView(user) }, { status: 201 });
   } catch (error) { return apiError(error); }
 }

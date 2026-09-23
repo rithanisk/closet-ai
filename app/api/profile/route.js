@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
-import { db, userView } from '@/src/server/db';
+import { assertDatabase, db, userView } from '@/src/server/db';
 import { apiError, assertSameOrigin, HttpError, jsonBody } from '@/src/server/http';
 
 const schema = z.object({
@@ -17,10 +17,12 @@ export async function PATCH(request) {
     assertSameOrigin(request);
     const user = await requireUser();
     const input = await jsonBody(request, schema);
-    const duplicate = db.prepare('SELECT id FROM users WHERE email = ? AND id <> ?').get(input.email, user.id);
+    const database = db();
+    const { data: duplicate, error: duplicateError } = await database.from('users').select('id').eq('email', input.email).neq('id', user.id).maybeSingle();
+    assertDatabase(duplicateError, 'Could not check email');
     if (duplicate) throw new HttpError(409, 'That email is already in use.');
-    db.prepare('UPDATE users SET name = ?, email = ?, city = ?, styles_json = ?, precise_location = ? WHERE id = ?')
-      .run(input.name, input.email, input.city, JSON.stringify(input.styles), input.preciseLocation ? 1 : 0, user.id);
-    return NextResponse.json({ user: userView(db.prepare('SELECT * FROM users WHERE id = ?').get(user.id)) });
+    const { data: updated, error } = await database.from('users').update({ name: input.name, email: input.email, city: input.city, styles_json: input.styles, precise_location: input.preciseLocation }).eq('id', user.id).select('*').single();
+    assertDatabase(error, 'Could not update profile');
+    return NextResponse.json({ user: userView(updated) });
   } catch (error) { return apiError(error); }
 }

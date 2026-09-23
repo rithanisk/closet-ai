@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
-import { db } from '@/src/server/db';
+import { assertDatabase, db } from '@/src/server/db';
 import { apiError, assertSameOrigin, HttpError, jsonBody } from '@/src/server/http';
 import { listWardrobe } from '@/src/server/repository';
 import { deleteImage } from '@/src/server/storage';
@@ -21,7 +21,7 @@ const itemSchema = z.object({
 export async function GET() {
   try {
     const user = await requireUser();
-    return NextResponse.json({ items: listWardrobe(user.id) });
+    return NextResponse.json({ items: await listWardrobe(user.id) });
   } catch (error) { return apiError(error); }
 }
 
@@ -33,19 +33,21 @@ export async function POST(request) {
       items: z.array(itemSchema).min(1).max(100),
       discardedImageIds: z.array(z.string().uuid()).max(100).default([]),
     }));
-    const insert = db.prepare(`INSERT INTO wardrobe_items
-      (id, user_id, image_id, name, category, color, pattern, material, formality, season, notes, favorite, available, worn, added_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 0, 1, 0, ?)`);
-    const commit = db.transaction(() => {
-      items.forEach((item, index) => {
-        const image = db.prepare('SELECT id FROM images WHERE id = ? AND user_id = ?').get(item.imageId, user.id);
-        if (!image) throw new HttpError(400, 'One of the extracted images is no longer available.');
-        insert.run(crypto.randomUUID(), user.id, item.imageId, item.name, item.category, item.color, item.pattern, item.material, item.formality, item.season, Date.now() + index);
-        db.prepare("UPDATE images SET kind = 'wardrobe-item' WHERE id = ? AND user_id = ?").run(item.imageId, user.id);
-      });
-    });
-    commit();
+    const database = db();
+    const imageIds = items.map((item) => item.imageId);
+    const { data: ownedImages, error: imageError } = await database.from('images').select('id').eq('user_id', user.id).in('id', imageIds);
+    assertDatabase(imageError, 'Could not verify extracted images');
+    if (ownedImages.length !== new Set(imageIds).size) throw new HttpError(400, 'One of the extracted images is no longer available.');
+    const rows = items.map((item, index) => ({
+      id: crypto.randomUUID(), user_id: user.id, image_id: item.imageId, name: item.name, category: item.category,
+      color: item.color, pattern: item.pattern, material: item.material, formality: item.formality,
+      season: item.season, notes: '', favorite: false, available: true, worn: 0, added_at: Date.now() + index,
+    }));
+    const { error: insertError } = await database.from('wardrobe_items').insert(rows);
+    assertDatabase(insertError, 'Could not add wardrobe items');
+    const { error: updateError } = await database.from('images').update({ kind: 'wardrobe-item' }).eq('user_id', user.id).in('id', imageIds);
+    assertDatabase(updateError, 'Could not finalize wardrobe images');
     await Promise.all(discardedImageIds.map((imageId) => deleteImage(user.id, imageId)));
-    return NextResponse.json({ items: listWardrobe(user.id) }, { status: 201 });
+    return NextResponse.json({ items: await listWardrobe(user.id) }, { status: 201 });
   } catch (error) { return apiError(error); }
 }

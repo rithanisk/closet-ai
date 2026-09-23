@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireUser } from '@/src/server/auth';
-import { db } from '@/src/server/db';
 import { apiError, assertSameOrigin, enforceRateLimit, HttpError, jsonBody } from '@/src/server/http';
 import { generateOutfits } from '@/src/server/openai';
 import { listOutfits, listWardrobe } from '@/src/server/repository';
@@ -24,10 +23,10 @@ export async function POST(request) {
     assertSameOrigin(request);
     const user = await requireUser();
     const input = await jsonBody(request, schema);
-    enforceRateLimit(user.id, 'outfits', 30, 60 * 60 * 1000, db);
-    const wardrobe = listWardrobe(user.id);
+    await enforceRateLimit(user.id, 'outfits', 30, 60 * 60 * 1000);
+    const wardrobe = await listWardrobe(user.id);
     if (wardrobe.filter((item) => item.available).length < 2) throw new HttpError(422, 'Add at least two available wardrobe pieces before asking the stylist.');
-    const saved = listOutfits(user.id, wardrobe);
+    const saved = await listOutfits(user.id, wardrobe);
     const weather = await getWeather(input.city || user.city, input.latitude != null && input.longitude != null ? { latitude: input.latitude, longitude: input.longitude } : null);
     const result = await generateOutfits({
       prompt: input.prompt,
