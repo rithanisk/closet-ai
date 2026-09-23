@@ -8,6 +8,7 @@ import { deleteImage } from '@/src/server/storage';
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
+  category: z.enum(['Tops', 'Bottoms', 'Skirts', 'Dresses', 'Shoes', 'Outerwear', 'Accessories', 'Bags']).optional(),
   color: z.string().trim().min(1).max(50).optional(),
   formality: z.enum(['Casual', 'Smart casual', 'Dressy']).optional(),
   notes: z.string().trim().max(500).optional(),
@@ -26,7 +27,7 @@ export async function PATCH(request, context) {
     assertDatabase(itemError, 'Could not load wardrobe item');
     if (!item) throw new HttpError(404, 'Wardrobe item not found.');
     const { error } = await database.from('wardrobe_items').update({
-      name: input.name ?? item.name, color: input.color ?? item.color, formality: input.formality ?? item.formality,
+      name: input.name ?? item.name, category: input.category ?? item.category, color: input.color ?? item.color, formality: input.formality ?? item.formality,
       notes: input.notes ?? item.notes, favorite: input.favorite ?? item.favorite, available: input.available ?? item.available,
     }).eq('id', id).eq('user_id', user.id);
     assertDatabase(error, 'Could not update wardrobe item');

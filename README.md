@@ -85,6 +85,10 @@ docker run --env-file .env.local -p 4173:4173 closet-ai
 
 Health check: `GET /api/health`.
 
+## Future features
+
+Post-MVP ideas and product requirements are tracked in [`FEATURE_BACKLOG.md`](./FEATURE_BACKLOG.md). Items in that file are documentation only and are not implemented in the current application.
+
 ## Verification
 
 ```bash

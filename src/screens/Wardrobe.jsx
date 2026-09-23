@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Archive, Heart, Search, Trash2, WandSparkles, X } from 'lucide-react';
 import { EmptyState, Field, ItemCard, ItemVisual, PageHeader } from '../components';
 
+const wardrobeCategories = ['Tops', 'Bottoms', 'Skirts', 'Dresses', 'Shoes', 'Outerwear', 'Accessories', 'Bags'];
+
 export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchive, onUseInOutfit }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All categories');
@@ -13,8 +15,9 @@ export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchi
   const categories = [...new Set(wardrobe.map((item) => item.category))].sort();
   const colors = [...new Set(wardrobe.map((item) => item.color))].sort();
   const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
     const result = wardrobe.filter((item) => {
-      if (search && !`${item.name} ${item.category} ${item.color}`.toLowerCase().includes(search.toLowerCase())) return false;
+      if (query && !item.name.toLowerCase().includes(query)) return false;
       if (category !== 'All categories' && item.category !== category) return false;
       if (color !== 'All colors' && item.color !== color) return false;
       if (availability === 'Available' && !item.available) return false;
@@ -56,8 +59,9 @@ function ItemDrawer({ item, onClose, onSave, onDelete, onArchive, onUse }) {
       <div className="drawer-visual-wrap"><ItemVisual item={item} /><button className={`favorite-toggle ${form.favorite ? 'active' : ''}`} onClick={() => setForm({ ...form, favorite: !form.favorite })}><Heart size={16} fill={form.favorite ? 'currentColor' : 'none'} /> {form.favorite ? 'Favorite' : 'Add to favorites'}</button></div>
       <div className="drawer-form">
         <Field label="Name"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-        <div className="form-grid"><Field label="Color"><input value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></Field><Field label="Formality"><select value={form.formality} onChange={(event) => setForm({ ...form, formality: event.target.value })}><option>Casual</option><option>Smart casual</option><option>Dressy</option></select></Field></div>
-        <div className="read-only-row"><span><small>Category</small>{item.category}</span><span><small>Season</small>{item.season}</span></div>
+        <div className="form-grid"><Field label="Category"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{wardrobeCategories.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Color"><input value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></Field></div>
+        <Field label="Formality"><select value={form.formality} onChange={(event) => setForm({ ...form, formality: event.target.value })}><option>Casual</option><option>Smart casual</option><option>Dressy</option></select></Field>
+        <div className="read-only-row"><span><small>Season</small>{item.season}</span></div>
         <Field label="Notes"><textarea rows="3" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Runs small, needs tailoring…" /></Field>
         <label className="toggle-row"><input type="checkbox" checked={form.available} onChange={(event) => setForm({ ...form, available: event.target.checked })} /><span /><div><strong>Available to wear</strong><small>Unavailable items are excluded from outfits.</small></div></label>
       </div>
