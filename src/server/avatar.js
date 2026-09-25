@@ -72,6 +72,8 @@ async function clearAvatarData(userId, row) {
 export async function createAvatar(userId, files, notes = '') {
   if (!files.length) throw new HttpError(400, 'Add at least one photo of yourself.');
   if (files.length > 4) throw new HttpError(400, 'Use up to four photos.');
+  // Read the existing avatar first so a missing table or bad connection fails before we pay for image generation.
+  const previous = await avatarRow(userId);
   const normalized = await mapLimit(files, 4, async (file) => sharp(await normalizeUpload(file))
     .resize({ width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: 88 })
@@ -84,7 +86,6 @@ export async function createAvatar(userId, files, notes = '') {
     for (const buffer of normalized) saved.push(await saveImage(userId, buffer, 'avatar-source', 'image/jpeg'));
     const frontImage = await saveImage(userId, front, 'avatar-view', 'image/png');
     saved.push(frontImage);
-    const previous = await avatarRow(userId);
     await clearAvatarData(userId, previous);
     const now = Date.now();
     const { error } = await db().from('avatars').insert({
