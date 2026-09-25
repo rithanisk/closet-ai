@@ -5,17 +5,25 @@ import { requireUser } from '@/src/server/auth';
 import { assertDatabase, db } from '@/src/server/db';
 import { apiError, assertSameOrigin, HttpError, jsonBody } from '@/src/server/http';
 import { listWardrobe } from '@/src/server/repository';
+import { garmentColumns, garmentFields } from '@/src/server/schemas';
 import { deleteImage } from '@/src/server/storage';
 
 const itemSchema = z.object({
   imageId: z.string().uuid(),
-  name: z.string().trim().min(1).max(80),
-  category: z.enum(['Tops', 'Bottoms', 'Skirts', 'Dresses', 'Shoes', 'Outerwear', 'Accessories', 'Bags']),
-  color: z.string().trim().min(1).max(50),
-  pattern: z.string().trim().max(50).default(''),
-  material: z.string().trim().max(50).default(''),
-  formality: z.enum(['Casual', 'Smart casual', 'Dressy']).default('Casual'),
-  season: z.string().trim().min(1).max(50).default('All seasons'),
+  cutout: z.boolean().default(false),
+  ...garmentFields,
+  secondaryColor: garmentFields.secondaryColor.default(''),
+  subcategory: garmentFields.subcategory.default(''),
+  pattern: garmentFields.pattern.default(''),
+  material: garmentFields.material.default(''),
+  formality: garmentFields.formality.default('Casual'),
+  season: garmentFields.season.default('All seasons'),
+  warmth: garmentFields.warmth.default(''),
+  fit: garmentFields.fit.default(''),
+  brand: garmentFields.brand.default(''),
+  description: garmentFields.description.default(''),
+  styleTags: garmentFields.styleTags.default([]),
+  details: garmentFields.details.default([]),
 });
 
 export async function GET() {
@@ -38,10 +46,10 @@ export async function POST(request) {
     const { data: ownedImages, error: imageError } = await database.from('images').select('id').eq('user_id', user.id).in('id', imageIds);
     assertDatabase(imageError, 'Could not verify extracted images');
     if (ownedImages.length !== new Set(imageIds).size) throw new HttpError(400, 'One of the extracted images is no longer available.');
-    const rows = items.map((item, index) => ({
-      id: crypto.randomUUID(), user_id: user.id, image_id: item.imageId, name: item.name, category: item.category,
-      color: item.color, pattern: item.pattern, material: item.material, formality: item.formality,
-      season: item.season, notes: '', favorite: false, available: true, worn: 0, added_at: Date.now() + index,
+    const rows = items.map(({ imageId, cutout, ...fields }, index) => ({
+      ...garmentColumns(fields),
+      id: crypto.randomUUID(), user_id: user.id, image_id: imageId, cutout,
+      notes: '', favorite: false, available: true, worn: 0, added_at: Date.now() + index,
     }));
     const { error: insertError } = await database.from('wardrobe_items').insert(rows);
     assertDatabase(insertError, 'Could not add wardrobe items');

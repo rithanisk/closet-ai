@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Archive, Heart, Search, Trash2, WandSparkles, X } from 'lucide-react';
-import { EmptyState, Field, ItemCard, ItemVisual, PageHeader } from '../components';
+import { Archive, Heart, LoaderCircle, Scissors, Search, ShoppingBag, Trash2, WandSparkles, X } from 'lucide-react';
+import { EmptyState, Field, ItemCard, ItemVisual, ListInput, PageHeader } from '../components';
+import { CATEGORIES, FORMALITY, WARMTH } from '../shared/wardrobe';
 
-const wardrobeCategories = ['Tops', 'Bottoms', 'Skirts', 'Dresses', 'Shoes', 'Outerwear', 'Accessories', 'Bags'];
-
-export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchive, onUseInOutfit }) {
+export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchive, onUseInOutfit, onUpgradeCutout, onGaps }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All categories');
   const [color, setColor] = useState('All colors');
@@ -17,7 +16,7 @@ export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchi
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     const result = wardrobe.filter((item) => {
-      if (query && !item.name.toLowerCase().includes(query)) return false;
+      if (query && ![item.name, item.subcategory, item.description, item.material, item.pattern, ...(item.styleTags || [])].join(' ').toLowerCase().includes(query)) return false;
       if (category !== 'All categories' && item.category !== category) return false;
       if (color !== 'All colors' && item.color !== color) return false;
       if (availability === 'Available' && !item.available) return false;
@@ -36,7 +35,7 @@ export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchi
 
   return (
     <div className="page wardrobe-page">
-      <PageHeader eyebrow="Your collection" title="Wardrobe" description={`${wardrobe.length} pieces, ready to style.`} action={<button className="button button-dark" onClick={onUpload}>+ Upload photos</button>} />
+      <PageHeader eyebrow="Your collection" title="Wardrobe" description={`${wardrobe.length} pieces, ready to style.`} action={<div className="header-actions"><button className="button button-outline" onClick={onGaps}><ShoppingBag size={15} /> Wardrobe gaps</button><button className="button button-dark" onClick={onUpload}>+ Upload photos</button></div>} />
       <div className="filter-bar">
         <label className="search-field"><Search size={16} /><input aria-label="Search your wardrobe" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your wardrobe" /></label>
         <select value={category} onChange={(event) => setCategory(event.target.value)}><option>All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select>
@@ -46,26 +45,38 @@ export function WardrobeScreen({ wardrobe, onUpload, onUpdate, onDelete, onArchi
         {filtersActive && <button className="text-link" onClick={clear}>Clear</button>}
       </div>
       {!wardrobe.length ? <EmptyState title="Your wardrobe is empty" body="Upload photos to create your first digital closet." action={<button className="button button-dark" onClick={onUpload}>Upload photos</button>} /> : !filtered.length ? <EmptyState icon={Search} title="Nothing matches" body="Try another word or clear your filters." action={<button className="button button-outline" onClick={clear}>Clear filters</button>} /> : <div className="item-grid item-grid-four">{filtered.map((item) => <ItemCard key={item.id} item={item} onClick={() => setSelectedId(item.id)} />)}</div>}
-      {selected && <ItemDrawer item={selected} onClose={() => setSelectedId(null)} onSave={(changes) => { onUpdate(selected.id, changes); setSelectedId(null); }} onDelete={() => onDelete(selected.id, () => setSelectedId(null))} onArchive={() => { onArchive(selected.id); setSelectedId(null); }} onUse={() => onUseInOutfit(selected)} />}
+      {selected && <ItemDrawer item={selected} onClose={() => setSelectedId(null)} onSave={(changes) => { onUpdate(selected.id, changes); setSelectedId(null); }} onDelete={() => onDelete(selected.id, () => setSelectedId(null))} onArchive={() => { onArchive(selected.id); setSelectedId(null); }} onUse={() => onUseInOutfit(selected)} onUpgradeCutout={() => onUpgradeCutout(selected)} />}
     </div>
   );
 }
 
-function ItemDrawer({ item, onClose, onSave, onDelete, onArchive, onUse }) {
+function ItemDrawer({ item, onClose, onSave, onDelete, onArchive, onUse, onUpgradeCutout }) {
   const [form, setForm] = useState({ ...item });
+  const [cutoutBusy, setCutoutBusy] = useState(false);
+  const set = (changes) => setForm((current) => ({ ...current, ...changes }));
+  const upgrade = async () => { setCutoutBusy(true); try { await onUpgradeCutout(); } finally { setCutoutBusy(false); } };
+  const editable = ['name', 'category', 'subcategory', 'color', 'secondaryColor', 'pattern', 'material', 'formality', 'season', 'warmth', 'fit', 'brand', 'description', 'styleTags', 'details', 'notes', 'favorite', 'available'];
+  const save = () => onSave(Object.fromEntries(editable.map((key) => [key, form[key]])));
   return (
     <><button className="drawer-scrim" onClick={onClose} aria-label="Close item details" /><aside className="item-drawer" aria-label={`${item.name} details`}>
-      <div className="drawer-heading"><div><div className="eyebrow">Wardrobe item</div><h2>Edit piece</h2></div><button className="icon-button" onClick={onClose}><X size={20} /></button></div>
-      <div className="drawer-visual-wrap"><ItemVisual item={item} /><button className={`favorite-toggle ${form.favorite ? 'active' : ''}`} onClick={() => setForm({ ...form, favorite: !form.favorite })}><Heart size={16} fill={form.favorite ? 'currentColor' : 'none'} /> {form.favorite ? 'Favorite' : 'Add to favorites'}</button></div>
+      <div className="drawer-heading"><div><div className="eyebrow">Wardrobe item</div><h2>Edit piece</h2></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={20} /></button></div>
+      <div className="drawer-visual-wrap"><ItemVisual item={item} /><button className={`favorite-toggle ${form.favorite ? 'active' : ''}`} onClick={() => set({ favorite: !form.favorite })}><Heart size={16} fill={form.favorite ? 'currentColor' : 'none'} /> {form.favorite ? 'Favorite' : 'Add to favorites'}</button></div>
+      {item.image && !item.cutout && <button className="cutout-upgrade" onClick={upgrade} disabled={cutoutBusy}>{cutoutBusy ? <><LoaderCircle className="spin" size={13} /> Creating transparent cutout…</> : <><Scissors size={13} /> Create a transparent cutout from this photo</>}</button>}
       <div className="drawer-form">
-        <Field label="Name"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-        <div className="form-grid"><Field label="Category"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{wardrobeCategories.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Color"><input value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></Field></div>
-        <Field label="Formality"><select value={form.formality} onChange={(event) => setForm({ ...form, formality: event.target.value })}><option>Casual</option><option>Smart casual</option><option>Dressy</option></select></Field>
-        <div className="read-only-row"><span><small>Season</small>{item.season}</span></div>
-        <Field label="Notes"><textarea rows="3" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Runs small, needs tailoring…" /></Field>
-        <label className="toggle-row"><input type="checkbox" checked={form.available} onChange={(event) => setForm({ ...form, available: event.target.checked })} /><span /><div><strong>Available to wear</strong><small>Unavailable items are excluded from outfits.</small></div></label>
+        <Field label="Name"><input value={form.name} onChange={(event) => set({ name: event.target.value })} /></Field>
+        <Field label="Description"><textarea rows="5" value={form.description || ''} onChange={(event) => set({ description: event.target.value })} placeholder="Silhouette, fabric, details…" /></Field>
+        <div className="form-grid"><Field label="Category"><select value={form.category} onChange={(event) => set({ category: event.target.value })}>{CATEGORIES.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Type"><input value={form.subcategory || ''} onChange={(event) => set({ subcategory: event.target.value })} placeholder="e.g. cardigan" /></Field></div>
+        <div className="form-grid"><Field label="Color"><input value={form.color} onChange={(event) => set({ color: event.target.value })} /></Field><Field label="Second color"><input value={form.secondaryColor || ''} onChange={(event) => set({ secondaryColor: event.target.value })} /></Field></div>
+        <div className="form-grid"><Field label="Pattern"><input value={form.pattern || ''} onChange={(event) => set({ pattern: event.target.value })} /></Field><Field label="Material"><input value={form.material || ''} onChange={(event) => set({ material: event.target.value })} /></Field></div>
+        <div className="form-grid"><Field label="Formality"><select value={form.formality} onChange={(event) => set({ formality: event.target.value })}>{FORMALITY.map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Warmth"><select value={form.warmth || ''} onChange={(event) => set({ warmth: event.target.value })}><option value="">Not set</option>{WARMTH.map((value) => <option key={value}>{value}</option>)}</select></Field></div>
+        <div className="form-grid"><Field label="Season"><input value={form.season || ''} onChange={(event) => set({ season: event.target.value })} /></Field><Field label="Fit"><input value={form.fit || ''} onChange={(event) => set({ fit: event.target.value })} /></Field></div>
+        <Field label="Details" hint="Comma separated"><ListInput value={form.details} onChange={(details) => set({ details })} /></Field>
+        <div className="form-grid"><Field label="Style tags" hint="Comma separated"><ListInput value={form.styleTags} onChange={(styleTags) => set({ styleTags })} /></Field><Field label="Brand"><input value={form.brand || ''} onChange={(event) => set({ brand: event.target.value })} /></Field></div>
+        <div className="read-only-row"><span><small>Worn</small>{item.worn || 0} times</span><span><small>Added</small>{item.addedAt ? new Date(item.addedAt).toLocaleDateString() : '—'}</span></div>
+        <Field label="Notes"><textarea rows="3" value={form.notes} onChange={(event) => set({ notes: event.target.value })} placeholder="Runs small, needs tailoring…" /></Field>
+        <label className="toggle-row"><input type="checkbox" checked={form.available} onChange={(event) => set({ available: event.target.checked })} /><span /><div><strong>Available to wear</strong><small>Unavailable items are excluded from outfits.</small></div></label>
       </div>
-      <div className="drawer-actions"><button className="button button-dark button-full" onClick={() => onSave(form)}>Save changes</button><button className="button button-outline button-full" onClick={onUse}><WandSparkles size={15} /> Use in an outfit</button><div className="split-actions"><button onClick={onArchive}><Archive size={14} /> Archive</button><button className="danger-text" onClick={onDelete}><Trash2 size={14} /> Delete</button></div></div>
+      <div className="drawer-actions"><button className="button button-dark button-full" onClick={save}>Save changes</button><button className="button button-outline button-full" onClick={onUse}><WandSparkles size={15} /> Use in an outfit</button><div className="split-actions"><button onClick={onArchive}><Archive size={14} /> Archive</button><button className="danger-text" onClick={onDelete}><Trash2 size={14} /> Delete</button></div></div>
     </aside></>
   );
 }

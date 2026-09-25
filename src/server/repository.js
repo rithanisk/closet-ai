@@ -39,6 +39,7 @@ export async function saveOutfit(userId, outfit) {
     occasion_fit: outfit.occasionFit,
     weather_fit: outfit.weatherFit,
     styling_notes: outfit.stylingNotes,
+    inspiration_note: outfit.inspirationNote || '',
     compromise_note: outfit.compromiseNote || '',
     shopping_suggestion: outfit.shoppingSuggestion || '',
     worn: false,

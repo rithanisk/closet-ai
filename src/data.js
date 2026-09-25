@@ -7,10 +7,7 @@ export const COLORS = {
   plum: '#6D445A',
 };
 
-export const categories = [
-  'Tops', 'Bottoms', 'Skirts', 'Dresses', 'Sets', 'Outerwear',
-  'Shoes', 'Bags', 'Jewelry', 'Belts', 'Hats', 'Scarves', 'Accessories',
-];
+export { CATEGORIES as categories } from './shared/wardrobe';
 
 export const seedWardrobe = [
   { id: 'w1', name: 'Ivory Silk Blouse', category: 'Tops', color: 'White', accent: COLORS.coral, favorite: true, available: true, formality: 'Smart casual', season: 'All seasons', notes: '', addedAt: 10, worn: 4 },

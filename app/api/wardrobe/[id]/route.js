@@ -4,17 +4,15 @@ import { requireUser } from '@/src/server/auth';
 import { assertDatabase, db } from '@/src/server/db';
 import { apiError, assertSameOrigin, HttpError, jsonBody } from '@/src/server/http';
 import { listWardrobe } from '@/src/server/repository';
+import { garmentColumns, garmentFields } from '@/src/server/schemas';
 import { deleteImage } from '@/src/server/storage';
 
 const updateSchema = z.object({
-  name: z.string().trim().min(1).max(80).optional(),
-  category: z.enum(['Tops', 'Bottoms', 'Skirts', 'Dresses', 'Shoes', 'Outerwear', 'Accessories', 'Bags']).optional(),
-  color: z.string().trim().min(1).max(50).optional(),
-  formality: z.enum(['Casual', 'Smart casual', 'Dressy']).optional(),
-  notes: z.string().trim().max(500).optional(),
-  favorite: z.boolean().optional(),
-  available: z.boolean().optional(),
-});
+  ...garmentFields,
+  notes: z.string().trim().max(500),
+  favorite: z.boolean(),
+  available: z.boolean(),
+}).partial();
 
 export async function PATCH(request, context) {
   try {
@@ -26,10 +24,9 @@ export async function PATCH(request, context) {
     const { data: item, error: itemError } = await database.from('wardrobe_items').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
     assertDatabase(itemError, 'Could not load wardrobe item');
     if (!item) throw new HttpError(404, 'Wardrobe item not found.');
-    const { error } = await database.from('wardrobe_items').update({
-      name: input.name ?? item.name, category: input.category ?? item.category, color: input.color ?? item.color, formality: input.formality ?? item.formality,
-      notes: input.notes ?? item.notes, favorite: input.favorite ?? item.favorite, available: input.available ?? item.available,
-    }).eq('id', id).eq('user_id', user.id);
+    const changes = garmentColumns(input);
+    if (!Object.keys(changes).length) return NextResponse.json({ items: await listWardrobe(user.id) });
+    const { error } = await database.from('wardrobe_items').update(changes).eq('id', id).eq('user_id', user.id);
     assertDatabase(error, 'Could not update wardrobe item');
     return NextResponse.json({ items: await listWardrobe(user.id) });
   } catch (error) { return apiError(error); }

@@ -32,6 +32,7 @@ export async function POST(request) {
       prompt: input.prompt,
       city: input.city || user.city,
       styles: user.styles,
+      styleProfile: user.styleProfile,
       weather: weatherLabel(weather),
       wardrobe,
       saved,

@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Archive, ChevronRight, CircleAlert, CloudSun, Heart, Home, ImagePlus,
-  LoaderCircle, LogOut, MessageCircleMore, RotateCcw, Search, Settings,
+  LoaderCircle, LogOut, MessageCircleMore, Palette, RotateCcw, Search, Settings,
   Shirt, Sparkles, Trash2, Upload, WandSparkles, X,
 } from 'lucide-react';
 
@@ -10,6 +10,7 @@ export const navItems = [
   { id: 'wardrobe', label: 'Wardrobe', icon: Shirt },
   { id: 'stylist', label: 'Stylist', icon: MessageCircleMore },
   { id: 'saved', label: 'Saved outfits', icon: Heart },
+  { id: 'inspiration', label: 'Inspiration', icon: Palette },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -52,12 +53,16 @@ export function PageHeader({ eyebrow, title, description, action }) {
   );
 }
 
-export function ItemVisual({ item, compact = false, className = '' }) {
+const CHECKER = 'repeating-conic-gradient(#ece8e0 0% 25%, #faf8f5 0% 50%)';
+
+export function ItemVisual({ item, compact = false, checker = false, className = '' }) {
   const style = item.image
-    ? { backgroundImage: `url(${item.image})` }
+    ? (checker && item.cutout
+      ? { backgroundImage: `url(${item.image}), ${CHECKER}`, backgroundSize: 'contain, 18px 18px', backgroundRepeat: 'no-repeat, repeat', backgroundOrigin: 'content-box, border-box', backgroundClip: 'content-box, border-box' }
+      : { backgroundImage: `url(${item.image})` })
     : { '--accent': item.accent || '#6B7A4F' };
   return (
-    <div className={`item-visual ${item.image ? 'photo' : 'pattern'} ${compact ? 'compact' : ''} ${className}`} style={style}>
+    <div className={`item-visual ${item.image ? 'photo' : 'pattern'} ${item.image && item.cutout ? 'cutout' : ''} ${compact ? 'compact' : ''} ${className}`} style={style} role={item.image ? 'img' : undefined} aria-label={item.image ? (item.description ? `${item.name}. ${item.description}` : item.name) : undefined}>
       {!item.image && (
         <div className="item-monogram">
           <span>{item.category || 'Piece'}</span>
@@ -144,6 +149,20 @@ export function Field({ label, children, hint }) {
       {hint && <small>{hint}</small>}
     </label>
   );
+}
+
+/** Comma-separated list editor that only parses on blur, so commas can be typed naturally. */
+export function ListInput({ value, onChange, ...props }) {
+  const joined = (value || []).join(', ');
+  const [draft, setDraft] = useState(joined);
+  useEffect(() => { setDraft(joined); }, [joined]);
+  const commit = () => onChange(draft.split(',').map((part) => part.trim()).filter(Boolean));
+  return <input {...props} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} />;
+}
+
+export function Chips({ values, empty = 'None yet' }) {
+  if (!values?.length) return <span className="chip-empty">{empty}</span>;
+  return <div className="chip-row">{values.map((value) => <span key={value}>{value}</span>)}</div>;
 }
 
 export function LoadingLine({ children }) {

@@ -12,6 +12,7 @@ const schema = z.object({
   occasionFit: z.string().trim().max(1200),
   weatherFit: z.string().trim().max(1200),
   stylingNotes: z.string().trim().max(1200),
+  inspirationNote: z.string().trim().max(1200).default(''),
   compromiseNote: z.string().trim().max(1200).default(''),
   shoppingSuggestion: z.string().trim().max(1200).default(''),
   items: z.array(z.object({ id: z.string().uuid() })).min(2).max(8),

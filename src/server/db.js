@@ -10,7 +10,7 @@ export function assertDatabase(error, context = 'Database request failed') {
   if (error) throw new Error(`${context}: ${error.message}`);
 }
 
-function parseJson(value, fallback) {
+export function parseJson(value, fallback) {
   if (value == null) return fallback;
   if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return fallback; }
@@ -25,6 +25,8 @@ export function userView(row) {
     city: row.city,
     styles: parseJson(row.styles_json, []),
     preciseLocation: Boolean(row.precise_location),
+    styleProfile: parseJson(row.style_profile_json, null),
+    styleProfileUpdatedAt: row.style_profile_updated_at ? Number(row.style_profile_updated_at) : null,
   };
 }
 
@@ -39,6 +41,15 @@ export function wardrobeView(row) {
     formality: row.formality,
     season: row.season,
     notes: row.notes,
+    description: row.description || '',
+    subcategory: row.subcategory || '',
+    secondaryColor: row.secondary_color || '',
+    fit: row.fit || '',
+    warmth: row.warmth || '',
+    brand: row.brand || '',
+    styleTags: parseJson(row.style_tags_json, []),
+    details: parseJson(row.details_json, []),
+    cutout: Boolean(row.cutout),
     favorite: Boolean(row.favorite),
     available: Boolean(row.available),
     worn: Number(row.worn),
@@ -59,6 +70,7 @@ export function outfitView(row, itemsById) {
     occasionFit: row.occasion_fit,
     weatherFit: row.weather_fit,
     stylingNotes: row.styling_notes,
+    inspirationNote: row.inspiration_note || '',
     compromiseNote: row.compromise_note,
     shoppingSuggestion: row.shopping_suggestion,
     worn: Boolean(row.worn),

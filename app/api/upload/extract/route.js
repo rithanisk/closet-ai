@@ -1,13 +1,32 @@
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/src/server/auth';
+import { mapLimit } from '@/src/server/concurrency';
 import { assertDatabase, db } from '@/src/server/db';
 import { apiError, assertSameOrigin, enforceRateLimit, HttpError } from '@/src/server/http';
-import { extractGarments } from '@/src/server/openai';
-import { cropAndSave, deleteImage, normalizeUpload } from '@/src/server/storage';
+import { extractGarments, isolateGarment } from '@/src/server/openai';
+import { cropAndSave, cropForIsolation, deleteImage, normalizeUpload, prepareCutout, saveCutout } from '@/src/server/storage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+const concurrency = () => Math.max(1, Math.min(8, Number(process.env.CUTOUT_CONCURRENCY) || 4));
+
+async function storeItemImage(userId, normalized, item) {
+  if (process.env.OPENAI_CUTOUTS !== 'false') {
+    try {
+      const reference = await cropForIsolation(normalized, item.bbox);
+      const cutout = await prepareCutout(await isolateGarment(reference, item));
+      if (cutout) return { ...(await saveCutout(userId, cutout)), cutout: true };
+    } catch (error) {
+      console.error(`Cutout failed for "${item.name}"`, error?.message || error);
+    }
+  }
+  // Fall back to a framed crop so the item is never lost; the user can retry the cutout later.
+  return { ...(await cropAndSave(userId, normalized, item.bbox)), cutout: false };
+}
+
+const norm = (value) => String(value || '').trim().toLowerCase();
 
 export async function POST(request) {
   try {
@@ -19,24 +38,35 @@ export async function POST(request) {
     const normalized = await normalizeUpload(file);
     const extracted = await extractGarments(normalized);
     if (!extracted.length) throw new HttpError(422, 'No clear garments or accessories were found in this photo.');
-    const { data: existing, error: existingError } = await db().from('wardrobe_items').select('name, category, color').eq('user_id', user.id);
+    const { data: existing, error: existingError } = await db().from('wardrobe_items').select('name, category, subcategory, color').eq('user_id', user.id);
     assertDatabase(existingError, 'Could not check wardrobe duplicates');
-    const items = [];
+
+    const stored = [];
     try {
-      for (const item of extracted) {
-        const stored = await cropAndSave(user.id, normalized, item.bbox);
-        const duplicate = existing.some((entry) => entry.category === item.category && entry.color.toLowerCase() === item.color.toLowerCase() && entry.name.toLowerCase() === item.name.toLowerCase());
-        items.push({
-          id: crypto.randomUUID(), imageId: stored.id, image: stored.image,
-          name: item.name, category: item.category, color: item.color, pattern: item.pattern,
-          material: item.material, formality: item.formality, season: item.season,
-          confidence: item.confidence >= 0.72 ? 'high' : 'low', duplicate, selected: !duplicate,
-        });
-      }
+      await mapLimit(extracted, concurrency(), async (item, index) => {
+        stored[index] = await storeItemImage(user.id, normalized, item);
+      });
     } catch (error) {
-      await Promise.all(items.map((item) => deleteImage(user.id, item.imageId)));
+      await Promise.all(stored.filter(Boolean).map((image) => deleteImage(user.id, image.id).catch(() => {})));
       throw error;
     }
+
+    const items = extracted.map((item, index) => {
+      const duplicate = existing.some((entry) => entry.category === item.category
+        && norm(entry.color) === norm(item.color)
+        && (norm(entry.name) === norm(item.name) || (item.subcategory && norm(entry.subcategory) === norm(item.subcategory))));
+      const { bbox: _bbox, confidence, ...fields } = item;
+      return {
+        ...fields,
+        id: crypto.randomUUID(),
+        imageId: stored[index].id,
+        image: stored[index].image,
+        cutout: stored[index].cutout,
+        confidence: confidence >= 0.72 ? 'high' : 'low',
+        duplicate,
+        selected: !duplicate,
+      };
+    });
     return NextResponse.json({ items });
   } catch (error) { return apiError(error); }
 }

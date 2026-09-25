@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, CloudSun, Plus, Sparkles } from 'lucide-react';
+import { ArrowRight, CloudSun, Palette, Plus, ShoppingBag, Sparkles } from 'lucide-react';
 import { EmptyState, ItemCard, OutfitPreview, PageHeader } from '../components';
 
 export function HomeScreen({ profile, wardrobe, saved, onNavigate, onStartStylist }) {
@@ -51,6 +51,19 @@ export function HomeScreen({ profile, wardrobe, saved, onNavigate, onStartStylis
               <div><div className="eyebrow">Improve your edit</div><h3>Add more for stronger picks</h3><p>More pieces give your stylist better combinations.</p></div>
               <button className="button button-outline" onClick={() => onNavigate('upload')}><Plus size={15} /> Add photos</button>
             </article>
+          </section>
+
+          <section className="tools-grid">
+            <button className="panel tool-card" onClick={() => onNavigate('inspiration')}>
+              <Palette size={19} strokeWidth={1.5} />
+              <div><div className="eyebrow">Inspiration</div><h3>{profile.styleProfile ? 'Your style profile is active' : 'Teach the stylist your taste'}</h3><p>{profile.styleProfile?.aesthetics?.length ? profile.styleProfile.aesthetics.slice(0, 3).join(' · ') : 'Upload inspiration images or connect a Pinterest board.'}</p></div>
+              <ArrowRight size={16} />
+            </button>
+            <button className="panel tool-card" onClick={() => onNavigate('gaps')}>
+              <ShoppingBag size={19} strokeWidth={1.5} />
+              <div><div className="eyebrow">Wardrobe gaps</div><h3>Find the pieces that work hardest</h3><p>Only suggestions that unlock several looks with what you own.</p></div>
+              <ArrowRight size={16} />
+            </button>
           </section>
 
           <section className="content-section">

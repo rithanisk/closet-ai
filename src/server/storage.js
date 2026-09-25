@@ -47,22 +47,70 @@ export async function saveImage(userId, buffer, kind, mimeType = 'image/webp') {
   return { id, image: `/api/assets/${id}` };
 }
 
-export async function cropAndSave(userId, source, bbox) {
-  const metadata = await sharp(source).metadata();
+function paddedRegion(metadata, bbox, padding) {
   const width = metadata.width || 1;
   const height = metadata.height || 1;
   const [x, y, w, h] = bbox;
-  const padding = 0.04;
   const left = Math.max(0, Math.floor((x / 1000 - padding) * width));
   const top = Math.max(0, Math.floor((y / 1000 - padding) * height));
   const right = Math.min(width, Math.ceil(((x + w) / 1000 + padding) * width));
   const bottom = Math.min(height, Math.ceil(((y + h) / 1000 + padding) * height));
+  return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
+}
+
+/** A generous PNG crop around one detection, used as the reference image for cutout generation. */
+export async function cropForIsolation(source, bbox) {
+  const metadata = await sharp(source).metadata();
+  return sharp(source)
+    .extract(paddedRegion(metadata, bbox, 0.06))
+    .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+    .png()
+    .toBuffer();
+}
+
+/** Legacy-style framed crop, kept as a fallback when a transparent cutout cannot be produced. */
+export async function cropAndSave(userId, source, bbox) {
+  const metadata = await sharp(source).metadata();
   const output = await sharp(source)
-    .extract({ left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) })
+    .extract(paddedRegion(metadata, bbox, 0.04))
     .resize({ width: 900, height: 900, fit: 'contain', background: '#f4f1eb', withoutEnlargement: true })
     .webp({ quality: 90 })
     .toBuffer();
   return saveImage(userId, output, 'pending-item', 'image/webp');
+}
+
+/**
+ * Normalize a generated cutout: trim empty transparent margins, center it on a square
+ * transparent canvas with breathing room, and store it as an alpha WEBP.
+ * Returns null when the image has no usable transparency so the caller can fall back.
+ */
+export async function prepareCutout(pngBuffer) {
+  const image = sharp(pngBuffer, { failOn: 'error' }).ensureAlpha();
+  const { data, info } = await image.clone().raw().toBuffer({ resolveWithObject: true });
+  let transparent = 0;
+  for (let index = 3; index < data.length; index += info.channels) if (data[index] < 16) transparent += 1;
+  const transparentShare = transparent / (info.width * info.height);
+  // A real cutout has a meaningful transparent area but is not empty.
+  if (transparentShare < 0.05 || transparentShare > 0.985) return null;
+  const trimmed = await image.trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 }).png().toBuffer();
+  const { data: fitted, info: size } = await sharp(trimmed)
+    .resize({ width: 820, height: 820, fit: 'inside' })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+  const horizontal = 900 - size.width;
+  const vertical = 900 - size.height;
+  return sharp(fitted)
+    .extend({
+      left: Math.floor(horizontal / 2), right: Math.ceil(horizontal / 2),
+      top: Math.floor(vertical / 2), bottom: Math.ceil(vertical / 2),
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .webp({ quality: 92, alphaQuality: 100 })
+    .toBuffer();
+}
+
+export async function saveCutout(userId, cutout) {
+  return saveImage(userId, cutout, 'pending-item', 'image/webp');
 }
 
 export async function getOwnedImage(userId, imageId) {

@@ -23,10 +23,15 @@ if (!existing) {
 }
 console.log('Private Supabase Storage bucket is ready.');
 
-const migration = await fs.readFile(new URL('../supabase/migrations/0001_closet_ai.sql', import.meta.url), 'utf8');
+const migrationsDir = new URL('../supabase/migrations/', import.meta.url);
+const migrationFiles = (await fs.readdir(migrationsDir)).filter((name) => name.endsWith('.sql')).sort();
 const database = postgres(process.env.DATABASE_URL, { max: 1, prepare: false, ssl: 'require' });
 try {
-  await database.unsafe(migration);
+  // Every migration is idempotent, so running the full ordered set is safe on each deploy.
+  for (const name of migrationFiles) {
+    await database.unsafe(await fs.readFile(new URL(name, migrationsDir), 'utf8'));
+    console.log(`Applied ${name}`);
+  }
 } finally {
   await database.end();
 }

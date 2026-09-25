@@ -5,6 +5,8 @@ import { ConfirmModal, LoadingLine, Sidebar, Toast } from './components';
 import { Auth } from './screens/Auth';
 import { HomeScreen } from './screens/Home';
 import { ReviewScreen } from './screens/Review';
+import { GapsScreen } from './screens/Gaps';
+import { InspirationScreen } from './screens/Inspiration';
 import { SavedScreen } from './screens/Saved';
 import { SettingsScreen } from './screens/Settings';
 import { StylistScreen } from './screens/Stylist';
@@ -106,13 +108,34 @@ export default function App() {
       const data = await api('/api/wardrobe', {
         method: 'POST',
         body: JSON.stringify({
-          items: approved.map(({ imageId, name, category, color, pattern, material, formality, season }) => ({ imageId, name, category, color, pattern, material, formality, season })),
+          items: approved.map(({ imageId, cutout, name, category, subcategory, color, secondaryColor, pattern, material, formality, season, warmth, fit, brand, description, styleTags, details }) => ({
+            imageId, cutout: Boolean(cutout), name, category, subcategory, color, secondaryColor, pattern, material, formality, season, warmth, fit, brand, description, styleTags, details,
+          })),
           discardedImageIds: [...discardedImageIds, ...detections.filter((item) => !item.selected).map((item) => item.imageId)],
         }),
       });
       uploadFiles.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
       setWardrobe(data.items); setDetections([]); setDiscardedImageIds([]); setUploadFiles([]); setScreen('wardrobe');
       setToast(`${approved.length} ${approved.length === 1 ? 'item' : 'items'} added to your wardrobe`);
+    } catch (error) { setToast(error.message); }
+  };
+
+  const updateDetection = (id, changes) => setDetections((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
+
+  const retryCutout = async (item) => {
+    updateDetection(item.id, { cutoutBusy: true });
+    try {
+      const data = await api('/api/upload/cutout', { method: 'POST', body: JSON.stringify({ imageId: item.imageId, name: item.name, category: item.category, subcategory: item.subcategory || '', description: item.description || '', details: item.details || [] }) });
+      updateDetection(item.id, { imageId: data.imageId, image: data.image, cutout: true, cutoutBusy: false });
+      setToast('Transparent cutout ready');
+    } catch (error) { updateDetection(item.id, { cutoutBusy: false }); setToast(error.message); }
+  };
+
+  const upgradeCutout = async (item) => {
+    try {
+      await api('/api/upload/cutout', { method: 'POST', body: JSON.stringify({ imageId: item.imageId, wardrobeItemId: item.id, name: item.name, category: item.category, subcategory: item.subcategory || '', description: item.description || '', details: item.details || [] }) });
+      const data = await api('/api/wardrobe');
+      setWardrobe(data.items); setToast('Transparent cutout saved');
     } catch (error) { setToast(error.message); }
   };
 
@@ -195,10 +218,12 @@ export default function App() {
       <main className="app-main">
         {screen === 'home' && <HomeScreen profile={profile} wardrobe={wardrobe} saved={savedOutfits} onNavigate={setScreen} onStartStylist={startStylist} />}
         {screen === 'upload' && <UploadScreen files={uploadFiles} onAddFiles={addFiles} onCancel={(id) => setUploadFiles((current) => current.filter((file) => file.id !== id))} onRetry={(id) => { const file = uploadFiles.find((entry) => entry.id === id); if (file) processUpload(file); }} onReview={openReview} />}
-        {screen === 'review' && <ReviewScreen items={detections} onChange={(id, changes) => setDetections((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item))} onRemove={removeDetection} onConfirmAll={() => { setDetections((current) => current.map((item) => item.confidence === 'high' && !item.duplicate ? { ...item, selected: true } : item)); setToast('High-confidence items confirmed'); }} onAdd={addConfirmedItems} />}
-        {screen === 'wardrobe' && <WardrobeScreen wardrobe={wardrobe} onUpload={() => setScreen('upload')} onUpdate={updateItem} onDelete={requestDeleteItem} onArchive={(id) => deleteItem(id)} onUseInOutfit={useInOutfit} />}
+        {screen === 'review' && <ReviewScreen items={detections} onChange={updateDetection} onRetryCutout={retryCutout} onRemove={removeDetection} onConfirmAll={() => { setDetections((current) => current.map((item) => item.confidence === 'high' && !item.duplicate ? { ...item, selected: true } : item)); setToast('High-confidence items confirmed'); }} onAdd={addConfirmedItems} />}
+        {screen === 'wardrobe' && <WardrobeScreen wardrobe={wardrobe} onUpload={() => setScreen('upload')} onUpdate={updateItem} onDelete={requestDeleteItem} onArchive={(id) => deleteItem(id)} onUseInOutfit={useInOutfit} onUpgradeCutout={upgradeCutout} onGaps={() => setScreen('gaps')} />}
         {screen === 'stylist' && <StylistScreen wardrobe={wardrobe} profile={profile} saved={savedOutfits} onSave={saveOutfit} onUpload={() => setScreen('upload')} initialPrompt={stylistPrompt} onConsumePrompt={() => setStylistPrompt('')} />}
         {screen === 'saved' && <SavedScreen outfits={savedOutfits} onMarkWorn={(id) => updateSaved(id, true)} onRemove={removeSaved} onStylist={() => setScreen('stylist')} />}
+        {screen === 'inspiration' && <InspirationScreen profile={profile} onProfile={(styleProfile, styleProfileUpdatedAt) => setProfile((current) => ({ ...current, styleProfile, styleProfileUpdatedAt }))} onToast={setToast} confirm={setConfirm} />}
+        {screen === 'gaps' && <GapsScreen wardrobe={wardrobe} onToast={setToast} onUpload={() => setScreen('upload')} onInspiration={() => setScreen('inspiration')} />}
         {screen === 'settings' && <SettingsScreen profile={profile} onSave={saveProfile} onDeleteAccount={deleteAccount} />}
       </main>
       <ConfirmModal config={confirm} onClose={() => setConfirm(null)} />
