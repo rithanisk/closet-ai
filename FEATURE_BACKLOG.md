@@ -1,11 +1,22 @@
 # Closet AI Feature Backlog
 
-This file tracks post-MVP product ideas. Items here are documented for future planning and are not part of the current implementation.
+This file tracks post-MVP product ideas and their implementation status.
 
 ## Pinterest and style-inspiration profile
 
-**Status:** Planned — do not implement in the current MVP  
+**Status:** Implemented (first version)  
 **Priority:** Post-MVP
+
+### What shipped
+
+- Inspiration screen with image upload (up to 12 per batch) and public Pinterest board import via the board RSS feed.
+- Per-image signal extraction and an aggregated, editable profile. Manual edits persist through rebuilds, with an option to discard them.
+- Sources can be paused, refreshed (boards), or removed. Individual images can be removed. All inspiration data can be deleted at once.
+- The profile is a soft preference in outfit generation, and outfits explain the connection when there is one.
+
+### Still open
+
+- Pinterest OAuth for private boards and periodic background sync.
 
 ### User need
 
@@ -40,8 +51,18 @@ Users should be able to teach Closet AI their personal aesthetic using visual re
 
 ## Versatile wardrobe-gap and shopping recommendations
 
-**Status:** Planned enhancement — do not implement in the current MVP  
+**Status:** Implemented (first version)  
 **Priority:** Post-MVP
+
+### What shipped
+
+- Wardrobe gaps screen (from Wardrobe and Home) with up to three user-initiated suggestions, each clearly labelled as unowned.
+- Deterministic versatility scoring, owned-pairing counts, estimated looks, occasions, and at least two example outfits built from owned items.
+- Duplicate guardrail, wishlist, already-owned, purchased, and dismiss-with-reason feedback that shapes later analyses.
+
+### Still open
+
+- Measuring acceptance rates and using them to tune the scoring weights.
 
 ### User need
 
@@ -79,4 +100,4 @@ When recommending something to buy, Closet AI should prioritize pieces that work
 
 ## Relationship to the current PRD
 
-These ideas extend the existing inspiration-image onboarding and shopping-suggestion concepts in `PRD.md`. They are intentionally deferred so the current production MVP can remain focused on reliable wardrobe extraction, inventory management, and owned-item outfit generation.
+These ideas extend the existing inspiration-image onboarding and shopping-suggestion concepts in `PRD.md`. Both now have a first implementation. Open follow-ups are listed under each item.
