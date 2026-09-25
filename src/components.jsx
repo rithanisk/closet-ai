@@ -1,40 +1,44 @@
 import React, { useEffect, useState } from 'react';
+import { layoutFlatLay } from './shared/flatlay';
 import {
-  Archive, ChevronRight, CircleAlert, CloudSun, Heart, Home, ImagePlus,
-  LoaderCircle, LogOut, MessageCircleMore, Palette, RotateCcw, Search, Settings,
+  Archive, Check, ChevronRight, CircleAlert, CloudSun, Heart, Home, ImagePlus,
+  LoaderCircle, LogOut, Orbit, Palette, PersonStanding, RotateCcw, Search, Settings,
   Shirt, Sparkles, Trash2, Upload, WandSparkles, X,
 } from 'lucide-react';
 
 export const navItems = [
   { id: 'home', label: 'Home', icon: Home },
+  { id: 'closet', label: 'Closet', icon: Orbit },
   { id: 'wardrobe', label: 'Wardrobe', icon: Shirt },
-  { id: 'stylist', label: 'Stylist', icon: MessageCircleMore },
-  { id: 'saved', label: 'Saved outfits', icon: Heart },
+  { id: 'stylist', label: 'Stylist', icon: Sparkles },
+  { id: 'fitting', label: 'Fitting room', icon: PersonStanding },
+  { id: 'saved', label: 'Saved', icon: Heart },
   { id: 'inspiration', label: 'Inspiration', icon: Palette },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ];
+
+const NAV_PARENT = { upload: 'wardrobe', review: 'wardrobe', gaps: 'wardrobe', settings: null };
 
 export function Sidebar({ screen, onNavigate, onUpload, onSignOut, name }) {
   const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   return (
     <aside className="sidebar">
-      <button className="wordmark" onClick={() => onNavigate('home')} aria-label="Closet AI home">Closet AI</button>
+      <button className="wordmark" onClick={() => onNavigate('home')} aria-label="Closet AI home"><span className="wordmark-orb" aria-hidden="true" />Closet AI</button>
       <nav aria-label="Primary navigation">
         {navItems.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={`nav-item ${screen === id ? 'active' : ''}`} onClick={() => onNavigate(id)}>
+          <button key={id} className={`nav-item ${(NAV_PARENT[screen] ?? screen) === id ? 'active' : ''}`} onClick={() => onNavigate(id)} aria-current={(NAV_PARENT[screen] ?? screen) === id ? 'page' : undefined}>
             <Icon size={17} strokeWidth={1.7} />
             <span>{label}</span>
           </button>
         ))}
       </nav>
       <div className="sidebar-bottom">
-        <button className="button button-dark button-full" onClick={onUpload}><Upload size={15} /> Upload photos</button>
-        <button className="profile-row" onClick={() => onNavigate('settings')}>
+        <button className="button button-primary button-full" onClick={onUpload}><Upload size={15} /> Add clothes</button>
+        <button className={`profile-row ${screen === 'settings' ? 'active' : ''}`} onClick={() => onNavigate('settings')}>
           <span className="avatar">{initials || 'JL'}</span>
-          <span className="profile-copy"><strong>{name}</strong><small>View profile</small></span>
+          <span className="profile-copy"><strong>{name}</strong><small>Settings</small></span>
           <ChevronRight size={15} />
         </button>
-        <button className="signout-link" onClick={onSignOut}><LogOut size={14} /> Sign out</button>
+        <button className="signout-link" onClick={onSignOut}><LogOut size={13} /> Sign out</button>
       </div>
     </aside>
   );
@@ -73,10 +77,11 @@ export function ItemVisual({ item, compact = false, checker = false, className =
   );
 }
 
-export function ItemCard({ item, onClick }) {
+export function ItemCard({ item, onClick, selectable = false, selected = false }) {
   return (
-    <button className="item-card" onClick={onClick} aria-label={`Open ${item.name}`}>
+    <button className={`item-card ${selected ? 'is-picked' : ''}`} onClick={onClick} aria-label={selectable ? `${selected ? 'Deselect' : 'Select'} ${item.name}` : `Open ${item.name}`} aria-pressed={selectable ? selected : undefined}>
       <div className="item-card-visual">
+        {selectable && <span className={`pick-box ${selected ? 'checked' : ''}`} aria-hidden="true">{selected && <Check size={13} />}</span>}
         <ItemVisual item={item} />
         {item.favorite && <span className="favorite-badge" aria-label="Favorite"><Heart size={15} fill="currentColor" /></span>}
         {!item.available && <span className="unavailable-badge">Unavailable</span>}
@@ -89,13 +94,25 @@ export function ItemCard({ item, onClick }) {
   );
 }
 
-export function OutfitPreview({ items, large = false }) {
+/** One cohesive, head-to-toe flat lay built from the outfit's cutouts. */
+export function OutfitFlatLay({ items, size = 'medium', label }) {
+  const boxes = layoutFlatLay(items);
   return (
-    <div className={`outfit-preview ${large ? 'large' : ''}`}>
-      {items.slice(0, 4).map((item, index) => <ItemVisual key={`${item.id || item.name}-${index}`} item={item} compact />)}
+    <div className={`flatlay flatlay-${size}`} role="img" aria-label={label || `Outfit with ${items.map((item) => item.name).join(', ')}`}>
+      <span className="flatlay-floor" aria-hidden="true" />
+      {boxes.map(({ item, zone, left, top, width, height, z }, index) => (
+        <div key={`${item.id || item.name}-${index}`} className={`flatlay-piece zone-${zone} ${item.cutout ? 'is-cutout' : 'is-photo'}`} style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`, zIndex: z }}>
+          {item.image
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={item.image} alt="" draggable="false" />
+            : <span className="flatlay-placeholder">{item.name}</span>}
+        </div>
+      ))}
     </div>
   );
 }
+
+export const OutfitPreview = ({ items, large = false }) => <OutfitFlatLay items={items} size={large ? 'large' : 'small'} />;
 
 export function EmptyState({ icon: Icon = Sparkles, title, body, action }) {
   return (
@@ -128,7 +145,7 @@ export function ConfirmModal({ config, onClose }) {
         <h2>{config.title}</h2>
         <p>{config.body} This action cannot be undone.</p>
         <div className="modal-actions">
-          <button className="button button-outline" onClick={onClose}>Cancel</button>
+          <button className="button button-ghost" onClick={onClose}>Cancel</button>
           <button className="button button-danger" onClick={config.onConfirm}>{config.actionLabel}</button>
         </div>
       </div>

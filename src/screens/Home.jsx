@@ -1,14 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, CloudSun, Palette, Plus, ShoppingBag, Sparkles } from 'lucide-react';
-import { EmptyState, ItemCard, OutfitPreview, PageHeader } from '../components';
+import { ArrowRight, CloudSun, Orbit, Palette, PersonStanding, Plus, ShoppingBag, Sparkles } from 'lucide-react';
+import { EmptyState, ItemCard, OutfitFlatLay, PageHeader } from '../components';
+import { promptChips } from '../data';
+
+const greeting = () => {
+  const hour = new Date().getHours();
+  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+};
 
 export function HomeScreen({ profile, wardrobe, saved, onNavigate, onStartStylist }) {
   const [prompt, setPrompt] = useState('');
   const firstName = profile.name?.split(' ')[0] || 'there';
-  const categoryCounts = useMemo(() => Object.entries(wardrobe.reduce((result, item) => {
-    result[item.category] = (result[item.category] || 0) + 1;
-    return result;
-  }, {})), [wardrobe]);
+  const categoryCount = useMemo(() => new Set(wardrobe.map((item) => item.category)).size, [wardrobe]);
+  const orbItems = wardrobe.filter((item) => item.image).slice(0, 6);
 
   const submit = (event) => {
     event.preventDefault();
@@ -19,61 +23,67 @@ export function HomeScreen({ profile, wardrobe, saved, onNavigate, onStartStylis
 
   return (
     <div className="page home-page">
-      <PageHeader eyebrow="Your daily edit" title={`Good afternoon, ${firstName}.`} description={wardrobe.length ? "Here's what's happening with your wardrobe today." : "Let's get your wardrobe started."} />
+      <PageHeader eyebrow="Today" title={`${greeting()}, ${firstName}`} description={wardrobe.length ? 'What are we getting dressed for?' : "Let's get your wardrobe started."} />
       {!wardrobe.length ? (
-        <EmptyState icon={Sparkles} title="Your wardrobe is empty" body="Upload a few photos—a flat lay, your closet, or even a mirror selfie. We'll detect each item and let you confirm it before anything is saved." action={<button className="button button-dark" onClick={() => onNavigate('upload')}>Upload your first photos</button>} />
+        <EmptyState icon={Sparkles} title="Your wardrobe is empty" body="Upload a few photos, a flat lay, your closet, or a mirror selfie. We'll cut out each piece and let you confirm it before anything is saved." action={<button className="button button-primary button-large" onClick={() => onNavigate('upload')}>Upload your first photos</button>} />
       ) : (
         <>
           <section className="home-hero-grid">
             <form className="stylist-cta-card" onSubmit={submit}>
-              <div className="eyebrow inverse">What are you dressing for?</div>
-              <h2>Your closet already<br />has the answer.</h2>
-              <div className="dark-input-row">
+              <div className="eyebrow">Ask your stylist</div>
+              <h2>Your closet already has the answer.</h2>
+              <div className="cta-input-row">
                 <input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Coffee with a friend, casual but put together" aria-label="Describe what you are dressing for" />
-                <button aria-label="Ask the stylist"><ArrowRight size={18} /></button>
+                <button className="button button-primary" aria-label="Ask the stylist"><ArrowRight size={17} /></button>
               </div>
+              <div className="pill-row subtle">{promptChips.slice(0, 4).map((chip) => <button type="button" key={chip} onClick={() => onStartStylist(chip)}>{chip}</button>)}</div>
             </form>
-            <article className="weather-card">
-              <CloudSun size={31} strokeWidth={1.4} />
-              <div className="eyebrow">Location & weather</div>
-              <h2>{profile.city || 'Set your city'}</h2>
-              <p>Live forecast checked when you ask the stylist</p>
-              <span>{profile.preciseLocation ? 'Precise location enabled' : 'Using your default city'}</span>
-            </article>
-          </section>
-
-          <section className="summary-grid">
-            <article className="panel wardrobe-summary">
-              <div className="section-heading"><h2>Wardrobe · {wardrobe.length} items</h2><button className="text-link" onClick={() => onNavigate('wardrobe')}>View all →</button></div>
-              <div className="category-list">{categoryCounts.slice(0, 6).map(([name, count]) => <span key={name}>{name} <small>{count}</small></span>)}</div>
-            </article>
-            <article className="panel add-more-card">
-              <div><div className="eyebrow">Improve your edit</div><h3>Add more for stronger picks</h3><p>More pieces give your stylist better combinations.</p></div>
-              <button className="button button-outline" onClick={() => onNavigate('upload')}><Plus size={15} /> Add photos</button>
-            </article>
+            <button className="closet-teaser" onClick={() => onNavigate('closet')}>
+              <span className="mini-orb" aria-hidden="true">
+                {orbItems.map((item, index) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={item.id} src={item.image} alt="" style={{ left: `${50 + 30 * Math.cos((2 * Math.PI * index) / orbItems.length - Math.PI / 2)}%`, top: `${50 + 30 * Math.sin((2 * Math.PI * index) / orbItems.length - Math.PI / 2)}%` }} />
+                ))}
+              </span>
+              <span className="teaser-copy"><span className="eyebrow">Your closet</span><strong>{wardrobe.length} pieces · {categoryCount} rails</strong><span className="teaser-link"><Orbit size={14} /> Step inside</span></span>
+            </button>
           </section>
 
           <section className="tools-grid">
-            <button className="panel tool-card" onClick={() => onNavigate('inspiration')}>
-              <Palette size={19} strokeWidth={1.5} />
-              <div><div className="eyebrow">Inspiration</div><h3>{profile.styleProfile ? 'Your style profile is active' : 'Teach the stylist your taste'}</h3><p>{profile.styleProfile?.aesthetics?.length ? profile.styleProfile.aesthetics.slice(0, 3).join(' · ') : 'Upload inspiration images or connect a Pinterest board.'}</p></div>
+            <button className="tool-card" onClick={() => onNavigate('fitting')}>
+              <span className="tool-icon"><PersonStanding size={18} /></span>
+              <div><h3>Fitting room</h3><p>Dress your twin and see it on you.</p></div>
               <ArrowRight size={16} />
             </button>
-            <button className="panel tool-card" onClick={() => onNavigate('gaps')}>
-              <ShoppingBag size={19} strokeWidth={1.5} />
-              <div><div className="eyebrow">Wardrobe gaps</div><h3>Find the pieces that work hardest</h3><p>Only suggestions that unlock several looks with what you own.</p></div>
+            <button className="tool-card" onClick={() => onNavigate('inspiration')}>
+              <span className="tool-icon"><Palette size={18} /></span>
+              <div><h3>{profile.styleProfile ? 'Style profile on' : 'Inspiration'}</h3><p>{profile.styleProfile?.aesthetics?.length ? profile.styleProfile.aesthetics.slice(0, 3).join(' · ') : 'Teach the stylist your taste.'}</p></div>
               <ArrowRight size={16} />
             </button>
+            <button className="tool-card" onClick={() => onNavigate('gaps')}>
+              <span className="tool-icon"><ShoppingBag size={18} /></span>
+              <div><h3>Wardrobe gaps</h3><p>Pieces that unlock the most looks.</p></div>
+              <ArrowRight size={16} />
+            </button>
+            <div className="tool-card weather-mini">
+              <span className="tool-icon"><CloudSun size={18} /></span>
+              <div><h3>{profile.city || 'Set your city'}</h3><p>Live weather is checked when you ask.</p></div>
+            </div>
           </section>
 
           <section className="content-section">
-            <div className="section-heading"><h2>Recently added</h2><button className="text-link" onClick={() => onNavigate('wardrobe')}>See wardrobe →</button></div>
-            <div className="item-grid item-grid-four">{wardrobe.slice(0, 4).map((item) => <ItemCard key={item.id} item={item} onClick={() => onNavigate('wardrobe', item.id)} />)}</div>
+            <div className="section-heading"><h2>Recently added</h2><button className="text-link" onClick={() => onNavigate('wardrobe')}>See all <ArrowRight size={13} /></button></div>
+            <div className="item-grid item-grid-five">
+              {wardrobe.slice(0, 4).map((item) => <ItemCard key={item.id} item={item} onClick={() => onNavigate('wardrobe')} />)}
+              <button className="add-tile" onClick={() => onNavigate('upload')}><Plus size={20} /><span>Add more</span></button>
+            </div>
           </section>
 
           <section className="content-section">
-            <div className="section-heading"><h2>Recently saved outfits</h2><button className="text-link" onClick={() => onNavigate('saved')}>View library →</button></div>
-            {saved.length ? <div className="saved-row">{saved.slice(0, 3).map((outfit) => <article className="mini-outfit" key={outfit.savedId}><OutfitPreview items={outfit.items} /><h3>{outfit.title}</h3><p>{outfit.items.length} items · {outfit.occasion || 'Styled for you'}</p></article>)}</div> : <div className="dashed-note">Nothing saved yet—approve an outfit from the Stylist to build your library.</div>}
+            <div className="section-heading"><h2>Saved outfits</h2>{saved.length > 0 && <button className="text-link" onClick={() => onNavigate('saved')}>View library <ArrowRight size={13} /></button>}</div>
+            {saved.length ? (
+              <div className="saved-row">{saved.slice(0, 3).map((outfit) => <button className="mini-outfit" key={outfit.savedId} onClick={() => onNavigate('saved')}><OutfitFlatLay items={outfit.items} size="small" label={outfit.title} /><h3>{outfit.title}</h3><p>{outfit.items.length} pieces</p></button>)}</div>
+            ) : <div className="dashed-note">Nothing saved yet. Approve a look from the stylist to start your library.</div>}
           </section>
         </>
       )}

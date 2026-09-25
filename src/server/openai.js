@@ -249,6 +249,8 @@ export async function generateOutfits({ prompt, city, styles, styleProfile, weat
       type: 'input_text',
       text: `You are a discerning personal stylist. Create exactly three distinct, complete, wearable outfits using ONLY IDs from the available wardrobe. Never invent an owned item. Each look must make sense as a full outfit for the occasion, location, live weather, and user's aesthetics. Shoes should be included when any are available. Use outerwear only when useful. Bags/accessories improve a look but are not mandatory. Rank strongest first. Use the item descriptions to judge texture, proportion, and color harmony.
 
+Every look must read as ONE cohesive head-to-toe outfit, not a set of separate good pieces: a clear color story, consistent formality, balanced proportions between top and bottom, and shoes and accessories that finish the same idea. List itemIds in head-to-toe order (hat, outerwear, top or dress, bottom, shoes), then bag and jewelry.
+
 Priority order: explicit constraints, completeness and practicality, occasion, weather, personal style, aesthetic coherence, then trend relevance.
 
 The inspiration profile (if present) is a SOFT preference learned from images the user saved. Let it nudge silhouettes, palette, layering, and proportions, but never override explicit constraints, weather, or occasion. Never try to recreate a specific pinned outfit, and never assume the user owns anything that appeared in an inspiration image. Fill inspirationNote only when a look genuinely reflects the profile.
@@ -269,24 +271,88 @@ Previously approved outfits JSON: ${JSON.stringify(approvedHistory)}`,
 }
 
 // ---------------------------------------------------------------------------
-// Virtual try-on
+// Avatar twin and try-on
 // ---------------------------------------------------------------------------
 
-export async function generateTryOn({ personBuffer, personMime, garments }) {
-  const imageFiles = [
-    await toFile(personBuffer, 'person.jpg', { type: personMime || 'image/jpeg' }),
-    ...await Promise.all(garments.map((item, index) => toFile(item.buffer, `garment-${index + 1}.${item.extension}`, { type: item.mimeType }))),
-  ];
-  const response = await client().images.edit({
+const AVATAR_BACKGROUND = 'a seamless, softly lit studio backdrop in very pale blue-grey (#EEF2F7) with a gentle floor shadow';
+const AVATAR_BASE_OUTFIT = 'a plain fitted light-grey crew-neck t-shirt, plain fitted light-grey ankle leggings, and simple minimal white sneakers';
+
+const VIEW_PROMPTS = {
+  front: 'facing the camera directly, standing tall and relaxed, arms slightly away from the body, feet hip-width apart',
+  side: 'turned 90 degrees to their left so the camera sees a clean side profile, same relaxed standing pose',
+  back: 'turned fully away from the camera so the camera sees their back, same relaxed standing pose, hair as it naturally falls',
+};
+
+async function imageFiles(images) {
+  return Promise.all(images.map((image, index) => toFile(image.buffer, `reference-${index + 1}.${image.extension || 'png'}`, { type: image.mimeType || 'image/png' })));
+}
+
+async function editImage({ images, prompt, size = '1024x1536', quality }) {
+  const request = {
     model: imageModel(),
-    image: imageFiles,
-    prompt: `Create a tasteful, photorealistic virtual try-on. The first reference is the person and must preserve their identity, face, body proportions, pose, skin tone, hair, and setting. The remaining references are the exact wardrobe pieces to put on them. Dress the person in all compatible supplied pieces as one coherent outfit. Preserve each garment's recognizable color, pattern, material, and silhouette. Do not change the person, add logos, or invent extra garments. Natural fit and realistic fabric draping. Full-body fashion photograph.`,
-    size: '1024x1536',
-    quality: 'medium',
+    image: await imageFiles(images),
+    prompt,
+    size,
+    quality: quality || process.env.OPENAI_TRYON_QUALITY || 'medium',
     output_format: 'png',
     input_fidelity: 'high',
-  });
+  };
+  let response;
+  try {
+    response = await client().images.edit(request);
+  } catch (error) {
+    if (error?.status !== 400) throw error;
+    const { input_fidelity: _fidelity, ...withoutFidelity } = request;
+    response = await client().images.edit(withoutFidelity);
+  }
   const base64 = response.data?.[0]?.b64_json;
-  if (!base64) throw new Error('OpenAI returned no try-on image.');
+  if (!base64) throw new Error('OpenAI returned no image.');
   return Buffer.from(base64, 'base64');
+}
+
+/**
+ * Render one view of the user's photoreal twin in neutral base clothing.
+ * `sources` are the user's own photos. For side and back views, `front` is the approved front render,
+ * so every view stays consistent with it.
+ */
+export async function generateAvatarView({ view, sources, front, notes }) {
+  const references = view === 'front' ? sources : [front, ...sources.slice(0, 2)];
+  const prompt = `Create a photorealistic, full-body fashion fitting photograph of the exact person in the reference ${view === 'front' ? 'photos' : 'images'}. This becomes their personal "twin" for virtual try-ons, so identity accuracy matters more than anything else.
+
+Keep exactly: face and facial features, skin tone, hair color, texture and length, body shape and proportions, height impression, and any visible distinctive features. Do not slim, idealize, age, or beautify them.
+${view === 'front' ? '' : `The first reference is their approved front view. Match it exactly: same person, same clothing, lighting, backdrop, and framing.
+`}Pose: ${VIEW_PROMPTS[view]}.
+Clothing: ${AVATAR_BASE_OUTFIT}. No jewelry, bags, or accessories.
+Framing: the whole body from the top of the head to the shoes is visible with comfortable margin, centered, camera at chest height, 50mm lens look.
+Setting: ${AVATAR_BACKGROUND}. Soft, even, flattering light. No text, no props, no other people.${notes ? `
+Notes from the user about themselves: ${notes}` : ''}`;
+  return editImage({ images: references, prompt, quality: process.env.OPENAI_AVATAR_QUALITY || 'high' });
+}
+
+/**
+ * Dress the twin in the supplied garment cutouts. Pieces not supplied keep the neutral base layer,
+ * so items can be tried one at a time.
+ */
+export async function generateTryOnLook({ avatar, identity, garments, view }) {
+  const hasBottomsOrDress = garments.some((item) => ['Bottoms', 'Skirts', 'Dresses', 'Sets'].includes(item.category));
+  const hasTop = garments.some((item) => ['Tops', 'Dresses', 'Sets'].includes(item.category));
+  const hasShoes = garments.some((item) => item.category === 'Shoes');
+  const keep = [
+    !hasTop && 'the plain light-grey t-shirt',
+    !hasBottomsOrDress && 'the plain light-grey leggings',
+    !hasShoes && 'the white sneakers',
+  ].filter(Boolean);
+  const list = garments.map((item, index) => `Garment reference ${index + 3}: ${item.name} (${item.category}${item.subcategory ? `, ${item.subcategory}` : ''}). ${item.description || ''}`).join('\n');
+  const prompt = `Virtual try-on. Reference 1 is the person, already posed and framed. Reference 2 is an extra photo of the same person for identity. References 3 and onward are the exact wardrobe pieces to put on them.
+
+Dress the person from reference 1 in every supplied piece as one natural, cohesive outfit, styled the way a stylist would wear them together (layering order, tucks, and accessory placement that make sense).
+${list}
+
+Rules:
+- Keep the person identical to reference 1: face, skin tone, hair, body shape and proportions, pose (${view} view), framing, lighting, and backdrop.
+- Reproduce each garment faithfully: color, pattern and print scale, fabric texture and drape, length, neckline, sleeves, hardware, and details. Fit it realistically to this body. Do not redesign it.
+- Replace base clothing only where a supplied piece covers that area.${keep.length ? ` Keep ${keep.join(', ')} unchanged.` : ''}
+- Do not add any garment, accessory, logo, or text that was not supplied.
+- Photorealistic full-body fashion photograph, whole body from head to shoes visible.`;
+  return editImage({ images: [avatar, identity, ...garments], prompt });
 }

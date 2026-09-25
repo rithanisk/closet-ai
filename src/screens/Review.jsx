@@ -10,13 +10,13 @@ export function ReviewScreen({ items, onChange, onRemove, onConfirmAll, onAdd, o
   const withoutCutout = items.filter((item) => !item.cutout).length;
   return (
     <div className="page review-page">
-      <PageHeader eyebrow="AI extraction" title="Review detected items" description="Each piece is cut out on a transparent background with a detailed description. Confirm what is correct and fix what isn't. Nothing joins your wardrobe until you approve it." action={<button className="button button-outline" onClick={onConfirmAll}><Check size={15} /> Confirm high-confidence</button>} />
+      <PageHeader eyebrow="AI extraction" title="Review detected items" description="Each piece is cut out on a transparent background with a detailed description. Confirm what is correct and fix what isn't. Nothing joins your wardrobe until you approve it." action={<button className="button button-secondary" onClick={onConfirmAll}><Check size={15} /> Confirm high-confidence</button>} />
       {needsAttention > 0 && <div className="review-banner"><TriangleAlert size={17} /><div><strong>{needsAttention} {needsAttention === 1 ? 'item needs' : 'items need'} attention.</strong><span>Check low-confidence labels and possible duplicates before adding them.</span></div></div>}
       {withoutCutout > 0 && <div className="review-banner"><Scissors size={17} /><div><strong>{withoutCutout} {withoutCutout === 1 ? 'piece is' : 'pieces are'} still a photo crop.</strong><span>The transparent cutout could not be finished. Retry it on the card, or add the crop and upgrade it later from your wardrobe.</span></div></div>}
       <div className="detection-grid">
         {items.map((item) => <DetectionCard key={item.id} item={item} onChange={(changes) => onChange(item.id, changes)} onRemove={() => onRemove(item.id)} onRetryCutout={() => onRetryCutout(item)} />)}
       </div>
-      <div className="sticky-review-footer"><span><strong>{selected}</strong> of {items.length} selected</span><button className="button button-dark" disabled={!selected || items.some((item) => item.cutoutBusy)} onClick={onAdd}>Add confirmed items to wardrobe →</button></div>
+      <div className="sticky-review-footer"><span><strong>{selected}</strong> of {items.length} selected</span><button className="button button-primary" disabled={!selected || items.some((item) => item.cutoutBusy)} onClick={onAdd}>Add confirmed items to wardrobe →</button></div>
     </div>
   );
 }

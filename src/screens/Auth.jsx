@@ -53,7 +53,7 @@ export function Auth({ onComplete }) {
             <Field label="Your default city">
               <input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Singapore" />
             </Field>
-            <button className="button button-dark" disabled={busy || !city.trim()} onClick={finishSignup}>{busy ? 'Creating your closet…' : 'Build my wardrobe →'}</button>
+            <button className="button button-primary button-large" disabled={busy || !city.trim()} onClick={finishSignup}>{busy ? 'Creating your closet…' : 'Build my wardrobe →'}</button>
           </div>
           {error && <p className="form-error" role="alert">{error}</p>}
         </section>
@@ -64,12 +64,11 @@ export function Auth({ onComplete }) {
   return (
     <main className="auth-shell">
       <section className="auth-hero">
-        <div className="auth-orb orb-coral" />
-        <div className="auth-orb orb-olive" />
+        <div className="auth-orb" aria-hidden="true"><span /></div>
         <div className="brand-kicker">Closet AI</div>
         <div className="auth-hero-copy">
-          <h1>Everything<br />you own,<br /><em>finally</em> in view.</h1>
-          <p>Upload photos of your clothes. We build the wardrobe, you get three outfits worth wearing—for whatever tonight is.</p>
+          <h1>Everything you own,<br /><em>finally</em> in view.</h1>
+          <p>Upload photos of your clothes. We build the wardrobe, then style it and show it on you, for whatever tonight is.</p>
         </div>
         <div className="privacy-line"><ShieldCheck size={16} /> Original photos are deleted once your items are extracted. Only the clean cutouts stay.</div>
       </section>
@@ -87,7 +86,7 @@ export function Auth({ onComplete }) {
           <Field label="Email"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></Field>
           <Field label="Password" hint={mode === 'signup' ? 'Use at least 8 characters.' : undefined}><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={mode === 'signup' ? 8 : 1} required autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} /></Field>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button button-dark button-full" type="submit" disabled={busy}>{busy ? 'Signing in…' : mode === 'signin' ? 'Sign in' : 'Continue'}</button>
+          <button className="button button-primary button-full button-large" type="submit" disabled={busy}>{busy ? 'Signing in…' : mode === 'signin' ? 'Sign in' : 'Continue'}</button>
           <p className="form-privacy">By continuing, you agree that original photos are processed once and then permanently deleted.</p>
         </form>
       </section>

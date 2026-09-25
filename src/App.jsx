@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ConfirmModal, LoadingLine, Sidebar, Toast } from './components';
 import { Auth } from './screens/Auth';
+import { ClosetScreen } from './screens/Closet';
+import { FittingRoomScreen } from './screens/FittingRoom';
 import { HomeScreen } from './screens/Home';
 import { ReviewScreen } from './screens/Review';
 import { GapsScreen } from './screens/Gaps';
@@ -27,6 +29,10 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [confirm, setConfirm] = useState(null);
   const [stylistPrompt, setStylistPrompt] = useState('');
+  const [fitting, setFitting] = useState(null);
+  const [wardrobeFocus, setWardrobeFocus] = useState(null);
+  const consumeFitting = useCallback(() => setFitting(null), []);
+  const consumeFocus = useCallback(() => setWardrobeFocus(null), []);
 
   useEffect(() => {
     let active = true;
@@ -160,6 +166,34 @@ export default function App() {
     onConfirm: async () => { setConfirm(null); await deleteItem(id, after); },
   });
 
+  const tryOn = (items) => {
+    const list = Array.isArray(items) ? items : [items];
+    setFitting({ itemIds: list.map((item) => item.id), requestedAt: Date.now() });
+    setScreen('fitting');
+  };
+
+  const openInWardrobe = (item) => { setWardrobeFocus(item.id); setScreen('wardrobe'); };
+
+  const runBulk = async (action, ids) => {
+    const perform = async () => {
+      try {
+        const data = await api('/api/wardrobe/bulk', { method: 'POST', body: JSON.stringify({ action, ids }) });
+        setWardrobe(data.items);
+        const noun = `${data.affected} ${data.affected === 1 ? 'item' : 'items'}`;
+        setToast({ delete: `${noun} deleted`, available: `${noun} marked available`, unavailable: `${noun} marked unavailable` }[action] || 'Updated');
+        return true;
+      } catch (error) { setToast(error.message); return false; }
+    };
+    if (action !== 'delete') return perform();
+    return new Promise((resolve) => setConfirm({
+      title: `Delete ${ids.length} ${ids.length === 1 ? 'item' : 'items'}?`,
+      body: 'Their cutouts and details will be permanently removed from your wardrobe.',
+      actionLabel: `Delete ${ids.length}`,
+      onConfirm: async () => { setConfirm(null); resolve(await perform()); },
+      onCancel: () => resolve(false),
+    }));
+  };
+
   const useInOutfit = (item) => { setStylistPrompt(`Build an outfit around my ${item.name}.`); setScreen('stylist'); };
   const startStylist = (prompt) => { setStylistPrompt(prompt); setScreen('stylist'); };
 
@@ -215,18 +249,22 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar screen={screen} onNavigate={setScreen} onUpload={() => setScreen('upload')} onSignOut={signOut} name={profile.name} />
-      <main className="app-main">
+      <main className={`app-main screen-${screen}`}>
+        <div key={screen} className="screen-enter">
+        {screen === 'closet' && <ClosetScreen wardrobe={wardrobe} onOpenItem={openInWardrobe} onTryOn={tryOn} onStyle={useInOutfit} onUpload={() => setScreen('upload')} onListView={() => setScreen('wardrobe')} />}
+        {screen === 'fitting' && <FittingRoomScreen wardrobe={wardrobe} pending={fitting} onConsumePending={consumeFitting} onToast={setToast} confirm={setConfirm} onUpload={() => setScreen('upload')} />}
         {screen === 'home' && <HomeScreen profile={profile} wardrobe={wardrobe} saved={savedOutfits} onNavigate={setScreen} onStartStylist={startStylist} />}
         {screen === 'upload' && <UploadScreen files={uploadFiles} onAddFiles={addFiles} onCancel={(id) => setUploadFiles((current) => current.filter((file) => file.id !== id))} onRetry={(id) => { const file = uploadFiles.find((entry) => entry.id === id); if (file) processUpload(file); }} onReview={openReview} />}
         {screen === 'review' && <ReviewScreen items={detections} onChange={updateDetection} onRetryCutout={retryCutout} onRemove={removeDetection} onConfirmAll={() => { setDetections((current) => current.map((item) => item.confidence === 'high' && !item.duplicate ? { ...item, selected: true } : item)); setToast('High-confidence items confirmed'); }} onAdd={addConfirmedItems} />}
-        {screen === 'wardrobe' && <WardrobeScreen wardrobe={wardrobe} onUpload={() => setScreen('upload')} onUpdate={updateItem} onDelete={requestDeleteItem} onArchive={(id) => deleteItem(id)} onUseInOutfit={useInOutfit} onUpgradeCutout={upgradeCutout} onGaps={() => setScreen('gaps')} />}
-        {screen === 'stylist' && <StylistScreen wardrobe={wardrobe} profile={profile} saved={savedOutfits} onSave={saveOutfit} onUpload={() => setScreen('upload')} initialPrompt={stylistPrompt} onConsumePrompt={() => setStylistPrompt('')} />}
-        {screen === 'saved' && <SavedScreen outfits={savedOutfits} onMarkWorn={(id) => updateSaved(id, true)} onRemove={removeSaved} onStylist={() => setScreen('stylist')} />}
+        {screen === 'wardrobe' && <WardrobeScreen wardrobe={wardrobe} onUpload={() => setScreen('upload')} onUpdate={updateItem} onDelete={requestDeleteItem} onArchive={(id) => deleteItem(id)} onUseInOutfit={useInOutfit} onUpgradeCutout={upgradeCutout} onGaps={() => setScreen('gaps')} onBulk={runBulk} onTryOn={tryOn} focusId={wardrobeFocus} onConsumeFocus={consumeFocus} />}
+        {screen === 'stylist' && <StylistScreen wardrobe={wardrobe} profile={profile} saved={savedOutfits} onSave={saveOutfit} onUpload={() => setScreen('upload')} initialPrompt={stylistPrompt} onConsumePrompt={() => setStylistPrompt('')} onTryOn={(outfit) => tryOn(outfit.items)} />}
+        {screen === 'saved' && <SavedScreen outfits={savedOutfits} onMarkWorn={(id) => updateSaved(id, true)} onRemove={removeSaved} onStylist={() => setScreen('stylist')} onTryOn={(outfit) => tryOn(outfit.items)} />}
         {screen === 'inspiration' && <InspirationScreen profile={profile} onProfile={(styleProfile, styleProfileUpdatedAt) => setProfile((current) => ({ ...current, styleProfile, styleProfileUpdatedAt }))} onToast={setToast} confirm={setConfirm} />}
         {screen === 'gaps' && <GapsScreen wardrobe={wardrobe} onToast={setToast} onUpload={() => setScreen('upload')} onInspiration={() => setScreen('inspiration')} />}
         {screen === 'settings' && <SettingsScreen profile={profile} onSave={saveProfile} onDeleteAccount={deleteAccount} />}
+        </div>
       </main>
-      <ConfirmModal config={confirm} onClose={() => setConfirm(null)} />
+      <ConfirmModal config={confirm} onClose={() => { confirm?.onCancel?.(); setConfirm(null); }} />
       <Toast message={toast} />
     </div>
   );

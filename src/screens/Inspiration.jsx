@@ -32,7 +32,7 @@ export function InspirationScreen({ profile: account, onProfile, onToast, confir
 
   useEffect(() => {
     let active = true;
-    api('/api/inspiration').then((data) => { if (active) setState(data); }).catch((error) => onToast(error.message));
+    api('/api/inspiration').then((data) => { if (active) setState(data); }).catch((error) => { if (active) setState({ sources: [], pins: [], profile: null, profileUpdatedAt: null }); onToast(error.message); });
     return () => { active = false; };
   }, [onToast]);
 
@@ -105,7 +105,7 @@ export function InspirationScreen({ profile: account, onProfile, onToast, confir
           <div className="eyebrow"><Pin size={12} /> Pinterest</div>
           <h2>Connect a board</h2>
           <p>Paste a public board link. We read its public feed and pull in up to 30 recent pins.</p>
-          <div className="board-input"><input value={boardUrl} onChange={(event) => setBoardUrl(event.target.value)} placeholder="https://www.pinterest.com/you/autumn-edit/" aria-label="Pinterest board link" disabled={Boolean(busy)} /><button className="button button-dark" disabled={Boolean(busy) || !boardUrl.trim()}>Connect</button></div>
+          <div className="board-input"><input value={boardUrl} onChange={(event) => setBoardUrl(event.target.value)} placeholder="https://www.pinterest.com/you/autumn-edit/" aria-label="Pinterest board link" disabled={Boolean(busy)} /><button className="button button-primary" disabled={Boolean(busy) || !boardUrl.trim()}>Connect</button></div>
         </form>
       </section>
 
@@ -123,7 +123,7 @@ export function InspirationScreen({ profile: account, onProfile, onToast, confir
               {GROUPS.map(([key, label]) => <label className="field" key={key}><span className="field-label">{label}</span><ListInput value={draft[key]} onChange={(value) => setDraft({ ...draft, [key]: value })} placeholder="Comma separated" /></label>)}
               {TEXT_FIELDS.map(([key, label]) => <label className="field" key={key}><span className="field-label">{label}</span><input value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /></label>)}
             </div>
-            <div className="modal-actions"><button className="button button-outline" onClick={() => setEditing(false)}>Cancel</button><button className="button button-dark" onClick={saveEdit} disabled={Boolean(busy)}>Save profile</button></div>
+            <div className="modal-actions"><button className="button button-secondary" onClick={() => setEditing(false)}>Cancel</button><button className="button button-primary" onClick={saveEdit} disabled={Boolean(busy)}>Save profile</button></div>
           </article>
         ) : (
           <article className="panel profile-card">
@@ -173,7 +173,7 @@ export function InspirationScreen({ profile: account, onProfile, onToast, confir
       )}
 
       {(sources.length > 0 || profile) && (
-        <section className="danger-zone"><div><div className="eyebrow">Your data</div><h2>Delete inspiration data</h2><p>Removes every board, uploaded image, extracted signal, and your inspiration profile.{account?.styles?.length ? ' Your selected aesthetics in Settings are kept.' : ''}</p></div><button className="button button-danger-outline" onClick={deleteAll} disabled={Boolean(busy)}><Trash2 size={15} /> Delete all</button></section>
+        <section className="danger-zone"><div><div className="eyebrow">Your data</div><h2>Delete inspiration data</h2><p>Removes every board, uploaded image, extracted signal, and your inspiration profile.{account?.styles?.length ? ' Your selected aesthetics in Settings are kept.' : ''}</p></div><button className="button button-danger-soft" onClick={deleteAll} disabled={Boolean(busy)}><Trash2 size={15} /> Delete all</button></section>
       )}
     </div>
   );

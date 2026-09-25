@@ -18,6 +18,8 @@ OPENAI_ENABLE_WEB_SEARCH=true
 OPENAI_CUTOUTS=true
 OPENAI_CUTOUT_QUALITY=medium
 CUTOUT_CONCURRENCY=4
+OPENAI_AVATAR_QUALITY=high
+OPENAI_TRYON_QUALITY=medium
 PINTEREST_PIN_LIMIT=30
 
 DATABASE_URL=
@@ -75,6 +77,18 @@ The app retains its existing custom account system: passwords are scrypt-hashed 
 
 `OPENAI_CUTOUTS=false` disables generation and keeps plain crops. `CUTOUT_CONCURRENCY` controls parallel image calls per upload, and `OPENAI_CUTOUT_QUALITY` accepts `low`, `medium`, or `high`.
 
+## Fitting room and twin
+
+Users create a photoreal "twin" from one to four photos of themselves (explicit consent required). The front view is rendered first, then side and back views are generated in the background so the twin can be turned around. Pieces are tried on one at a time or as a whole outfit sent from the stylist or saved looks. Each render combines the twin, one identity reference photo, and the garment cutouts, and is cached per avatar version, view, and item set, so repeat combinations are instant and free. Reference photos, views, and renders live in private storage and are removed when the twin is deleted or retaken.
+
+## Closet orb
+
+The Closet screen opens on a light-blue orb holding floating cutouts. Tapping or scrolling steps inside a CSS 3D walk-in closet where each category is a rail. Drag to turn and move between rails, scroll to zoom, use the rail list to jump, and search to highlight matches. Selecting a piece opens a quick view with Try on, Style it, and Edit.
+
+## Outfit flat lays
+
+Outfits are shown as one composed head-to-toe flat lay built from the transparent cutouts (`src/shared/flatlay.js`), rather than separate tiles. The stylist is also instructed to build cohesive head-to-toe looks and return items in head-to-toe order.
+
 ## Style inspiration
 
 Users can upload inspiration images or connect a public Pinterest board. Boards are read through Pinterest's public board RSS feed (`/{user}/{board}.rss`), so no Pinterest app credentials are needed. Private boards are not supported until an OAuth integration is added. Each image is analyzed for recurring signals, which are aggregated into an editable profile. Manual edits are respected on every rebuild. The profile is passed to the stylist as a soft preference below constraints, weather, and occasion, and outfits can explain the connection. Sources can be paused, refreshed, or removed, and all inspiration data can be deleted at once.
@@ -88,7 +102,7 @@ A user-initiated analysis suggests at most three unowned pieces. Each suggestion
 - Original upload photos are normalized in memory and never written to application or Supabase storage.
 - Only extracted item cutouts approved by the user are retained.
 - Uploaded inspiration images are kept only as small private thumbnails so users can review and remove them. Pinterest pins are referenced by their public image URL and are not copied.
-- Virtual try-on source photos are not retained; only the generated result is stored privately.
+- Twin reference photos are kept privately only with explicit consent and are deleted with the twin. Try-on renders are stored privately and cached.
 - Every database query and image fetch is scoped to the authenticated user ID.
 - Mutations use same-origin checks and Zod validation.
 - Account deletion removes private Storage objects before cascading database deletion.

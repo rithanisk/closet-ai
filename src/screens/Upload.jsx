@@ -47,8 +47,8 @@ export function UploadScreen({ files, onAddFiles, onCancel, onRetry, onReview })
       <div className="upload-footer">
         <div className="upload-helper"><ShieldCheck size={16} /><span>Original photos are processed securely and not retained. Only approved transparent cutouts stay in your private wardrobe.</span></div>
         <div className="upload-actions">
-          {files.length > 0 && <button className="button button-outline" onClick={() => inputRef.current?.click()}>+ Add more photos</button>}
-          <button className="button button-dark" disabled={!ready} onClick={onReview}>{ready ? 'Continue to review →' : <LoadingLine>Waiting for an item</LoadingLine>}</button>
+          {files.length > 0 && <button className="button button-secondary" onClick={() => inputRef.current?.click()}>+ Add more photos</button>}
+          <button className="button button-primary" disabled={!ready} onClick={onReview}>{ready ? 'Continue to review →' : <LoadingLine>Waiting for an item</LoadingLine>}</button>
         </div>
       </div>
     </div>
